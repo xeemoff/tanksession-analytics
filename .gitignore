@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.vscode/
+dist/
+*.mtmod
+# Journal data and local client configuration
+*.jsonl
+!sample_data/battles.jsonl
+settings.json
+*.log
+*.csv
+/mods/
+data/
+.env
+.env.*
+.DS_Store
+Thumbs.db
+*.tmp
+*~

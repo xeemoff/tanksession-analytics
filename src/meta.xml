@@ -1,0 +1,6 @@
+<mod>
+  <id>ru.tanksession.analytics</id>
+  <version>0.3.0</version>
+  <name>TankSession Analytics</name>
+  <description>Local battle analytics and CSV export</description>
+</mod>
