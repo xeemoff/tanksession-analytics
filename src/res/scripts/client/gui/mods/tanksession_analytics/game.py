@@ -42,12 +42,13 @@ def _error(message):
 
 def _context():
     context = {}
-    if _account_id is not None:
-        context['account_id'] = _account_id
     try:
         player = BigWorld.player()
         if player is None:
+            # No active client entity: never reuse an old cached account.
             return context
+        if _account_id is not None:
+            context['account_id'] = _account_id
         account_id = getattr(player, 'databaseID', None)
         if account_id:
             context['account_id'] = account_id
@@ -115,6 +116,8 @@ def _on_battle_results(is_player_vehicle, results):
             _log('Saved battle: ' + record['arena_id'])
         elif status == 'skipped':
             _log('Skipped incomplete/ambiguous battle result')
+        elif status in ('identity_missing', 'account_mismatch'):
+            _log('Skipped battle due to account identity: ' + status)
     except Exception:
         _error('Battle capture failed: ' + traceback.format_exc())
 
@@ -140,6 +143,9 @@ def _delayed_recovery():
 
 def _on_account_become_player(*args, **kwargs):
     global _account_id
+    # A new login event must invalidate the previous account, even if the
+    # current client's databaseID is temporarily unavailable.
+    _account_id = None
     try:
         player = BigWorld.player()
         identifier = getattr(player, 'databaseID', None)
@@ -214,7 +220,7 @@ def init():
     try:
         _store = BattleStore(default_path())
         _pending = PendingJournal(default_path() + '.pending.jsonl')
-        _recorder = ResultRecorder(_store, _pending)
+        _recorder = ResultRecorder(_store, _pending, require_account=True)
         if _load_cache_opt_in():
             _recovery = CacheRecovery(_pending, _recorder, log=_log)
             _log('EXPERIMENTAL cache recovery enabled (unverified API)')

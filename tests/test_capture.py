@@ -39,6 +39,32 @@ class CaptureTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def test_live_capture_without_verified_identity_is_rejected(self):
+        live = ResultRecorder(self.store, self.pending, require_account=True)
+        status, record = live.receive(result(997), confirmed_own=True)
+        self.assertEqual((status, record), ('identity_missing', None))
+        self.assertEqual(self.store.records, [])
+        status, record = live.receive(result(998),
+                                      current_context={'account_id': 88},
+                                      confirmed_own=True)
+        self.assertEqual(status, 'saved')
+        self.assertEqual(record['account_id'], '88')
+
+    def test_late_result_cannot_cross_account_boundary(self):
+        self.pending.start(990, {'account_id': 88, 'player_vehicle_id': 42,
+                                 'vehicle_name': 'ИС-7'}, 1720000000)
+        live = ResultRecorder(self.store, self.pending, require_account=True)
+        status, record = live.receive(result(990),
+                                      current_context={'account_id': 99},
+                                      confirmed_own=True)
+        self.assertEqual((status, record), ('account_mismatch', None))
+        self.assertIn('990', self.pending.pending)
+        self.assertEqual(self.store.records, [])
+        # Switching back to the right account permits safe completion.
+        self.assertEqual(live.receive(result(990),
+                                      current_context={'account_id': 88},
+                                      confirmed_own=True)[0], 'saved')
+
     def test_delayed_result_uses_saved_vehicle_context(self):
         self.pending.start(800, {'account_id': 5, 'player_vehicle_id': 42,
                                  'vehicle_name': 'ИС-7', 'team': 1}, 1720000000)

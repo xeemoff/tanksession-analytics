@@ -110,6 +110,26 @@ class GameAdapterTests(unittest.TestCase):
         self.assertEqual(len(self.events.onAvatarReady.handlers), 0)
         self.assertEqual(len(self.events.onAccountBecomePlayer.handlers), 0)
 
+    def test_login_event_invalidates_old_account(self):
+        self.game.init()
+        self.events.onAccountBecomePlayer.fire()
+        self.assertEqual(self.game._account_id, 88)
+        self.player.databaseID = None
+        self.events.onAccountBecomePlayer.fire()
+        self.assertIsNone(self.game._account_id)
+        self.assertNotIn('account_id', self.game._context())
+
+    def test_no_active_player_never_reuses_cached_account(self):
+        self.game.init()
+        self.events.onAccountBecomePlayer.fire()
+        self.assertEqual(self.game._account_id, 88)
+        original = sys.modules['BigWorld'].player
+        sys.modules['BigWorld'].player = lambda: None
+        try:
+            self.assertEqual(self.game._context(), {})
+        finally:
+            sys.modules['BigWorld'].player = original
+
     def test_missing_optional_hooks_do_not_stop_basic_result_capture(self):
         del self.events.onAvatarReady
         del self.events.onAccountBecomePlayer
