@@ -6,8 +6,36 @@ import os
 from .core import _arena_id, _as_text, _non_negative_int
 
 
-def default_path():
-    return os.path.join(os.getcwd(), 'mods', 'configs',
+def discover_game_root(cwd=None, app_directory=None):
+    """Find a verified game root; never write to an unrelated working folder.
+
+    The game commonly starts from its root. Some launchers run its executable
+    from win32/win64, so ResMgr.appDirectory() is an additional candidate.
+    A paths.xml marker is required; no arbitrary CWD fallback is accepted.
+    """
+    candidates = [os.path.abspath(cwd if cwd is not None else os.getcwd())]
+    if app_directory:
+        candidate = os.path.abspath(app_directory)
+        if os.path.isfile(candidate):
+            candidate = os.path.dirname(candidate)
+        candidates.append(candidate)
+        if os.path.basename(candidate).lower() in ('win32', 'win64'):
+            candidates.append(os.path.dirname(candidate))
+    for candidate in candidates:
+        if os.path.isfile(os.path.join(candidate, 'paths.xml')):
+            return candidate
+    raise IOError('Unable to locate game root (paths.xml missing)')
+
+
+def default_path(game_root=None):
+    if game_root is None:
+        try:
+            import ResMgr
+            app_directory = ResMgr.appDirectory()
+        except (ImportError, AttributeError, RuntimeError):
+            app_directory = None
+        game_root = discover_game_root(app_directory=app_directory)
+    return os.path.join(os.path.abspath(game_root), 'mods', 'configs',
                         'tanksession_analytics', 'battles.jsonl')
 
 

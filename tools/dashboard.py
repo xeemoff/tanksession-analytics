@@ -8,6 +8,7 @@ interacts with the game: it reads a JSONL journal produced by the adapter.
 import argparse
 import csv
 import html
+import json
 import io
 import os
 import sys
@@ -18,6 +19,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(ROOT, 'src', 'res', 'scripts', 'client', 'gui', 'mods'))
 from tanksession_analytics.storage import BattleStore
+from tanksession_analytics.goals import evaluate_goals, validate_goals
 from tanksession_analytics.core import summarize, by_day, _non_negative_int
 from tanksession_analytics.analytics import (record_date, select_records,
     vehicle_table, window_comparison, rolling_damage, safe_window, valid_date)
@@ -25,6 +27,34 @@ from tanksession_analytics.analytics import (record_date, select_records,
 
 CSV_FIELDS = ('arena_id', 'account_id', 'timestamp', 'date', 'vehicle', 'mode',
               'outcome', 'damage', 'assistance_radio', 'assistance_track', 'xp')
+
+
+class CachedJournal:
+    """Reload only when journal identity/size/mtime changes (single-process server)."""
+    def __init__(self, path):
+        self.path = path
+        self.signature = object()
+        self.data = []
+
+    def records(self):
+        try:
+            stat = os.stat(self.path)
+            signature = (stat.st_ino, stat.st_size, stat.st_mtime_ns)
+        except FileNotFoundError:
+            signature = None
+        if signature != self.signature:
+            self.data = BattleStore(self.path).records if signature else []
+            self.signature = signature
+        return self.data
+
+
+def load_goals(path):
+    if not path:
+        return []
+    if os.path.getsize(path) > 8192:
+        raise ValueError('Goals configuration is too large')
+    with open(path, 'r', encoding='utf-8') as stream:
+        return validate_goals(json.load(stream))
 
 
 def escape(value):
@@ -162,8 +192,25 @@ def battle_html(records):
     return ''.join(rows) or '<tr><td colspan="5" class="hint">Боёв пока нет. Попробуйте демоданные.</td></tr>'
 
 
+def goals_html(records, goals):
+    if not goals:
+        return '<p class="hint">Цели не заданы. Используйте --goals путь/к/goals.json для персональных целей.</p>'
+    labels = {'in_progress': 'Нужно больше боёв',
+              'insufficient_data': 'Недостаточно известных значений урона',
+              'achieved': 'Цель достигнута', 'not_achieved': 'Цель пока не достигнута'}
+    rows = []
+    for item in evaluate_goals(records, goals):
+        rows.append('<tr><td>%s</td><td class="num">%d</td><td class="num">%d/%d</td>'
+                    '<td class="num">%s</td><td>%s</td></tr>' % (
+                        escape(item['vehicle']), item['target'], item['battles'], item['window'],
+                        escape(fmt(item['avg_damage'])), escape(labels[item['status']])))
+    return ('<div class="scroll"><table><thead><tr><th>Танк</th><th class="num">Цель по урону</th>'
+            '<th class="num">Боёв</th><th class="num">Текущий средний</th><th>Статус</th></tr>'
+            '</thead><tbody>%s</tbody></table></div>' % ''.join(rows))
+
+
 def render(records, vehicle_filter='', from_day='', to_day='', source_label='',
-           account_filter='', window=10):
+           account_filter='', window=10, goals=None):
     """Render an escaped, script-free HTML page from local data only."""
     window = safe_window(window)
     from_day, to_day = valid_date(from_day), valid_date(to_day)
@@ -229,6 +276,7 @@ footer{color:#a1b6c9;font-size:12px;margin-top:30px}code{overflow-wrap:anywhere;
 <section class="panel"><h2>Сравнение двух последовательных периодов</h2>$comparison</section>
 <section class="panel"><h2>Скользящий средний урон</h2><p class="hint">Последние 80 точек, окно — $window боёв. Пробелы означают недостаток данных, а не нулевой урон.</p><div class="scroll">$rolling</div></section>
 <section class="panel"><h2>Средний урон по дням</h2><div class="scroll">$daily</div></section>
+<section class="panel"><h2>Персональные цели</h2><p class="hint">Оценка по последним боям выбранной техники. Цель засчитывается только на полном окне с достаточным количеством известных значений.</p>$goals</section>
 <section class="panel"><h2>Эффективность по танкам</h2><p class="hint">Сортировка по числу сыгранных боёв; прочерк означает отсутствие подтверждённой метрики.</p>
 <div class="scroll"><table><thead><tr><th>Техника</th><th class="num">Боёв</th><th class="num">Победы</th><th class="num">Средний урон</th><th class="num">Есть урон</th></tr></thead><tbody>$vehicles_table</tbody></table></div></section>
 <section class="panel"><h2>Последние 150 боёв</h2><div class="scroll"><table><thead><tr><th>Дата</th><th>Танк</th><th>Исход</th><th class="num">Урон</th><th class="num">Опыт</th></tr></thead><tbody>$battles</tbody></table></div></section>
@@ -237,6 +285,7 @@ footer{color:#a1b6c9;font-size:12px;margin-top:30px}code{overflow-wrap:anywhere;
         accounts=''.join(account_opts), vehicles=''.join(opts), windows=''.join(wopts),
         from_day=escape(from_day), to_day=escape(to_day), query=escape(query),
         cards=cards, comparison=comparison_html(selected, window), window=window,
+        goals=goals_html(selected, goals or []),
         daily=daily_chart(selected), rolling=rolling_chart(selected, window),
         vehicles_table=vehicle_html(selected), battles=battle_html(selected),
         source=escape(source_label))
@@ -282,12 +331,18 @@ def main():
                         help='Local JSONL data file (defaults to SYNTHETIC example data)')
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=8765)
+    parser.add_argument('--goals', default='', help='Optional local JSON file with personal targets')
     args = parser.parse_args()
     if args.host not in ('127.0.0.1', 'localhost'):
         parser.error('For privacy, only 127.0.0.1/localhost is supported')
     if not 1 <= args.port <= 65535:
         parser.error('Port must be 1..65535')
     source = os.path.abspath(args.data)
+    try:
+        goals = load_goals(args.goals)
+    except (OSError, ValueError, TypeError) as error:
+        parser.error('Cannot load goals: %s' % error)
+    journal = CachedJournal(source)
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -303,13 +358,13 @@ def main():
                 return
             params = parse_qs(parsed.query)
             get = lambda key: params.get(key, [''])[0]
-            records = BattleStore(source).records
+            records = journal.records()
             if parsed.path == '/export.csv':
                 data = export_csv(records, get('vehicle'), get('from'), get('to'), get('account'))
                 kind = 'text/csv; charset=utf-8'
             else:
                 data = render(records, get('vehicle'), get('from'), get('to'), source,
-                              get('account'), get('window')).encode('utf-8')
+                              get('account'), get('window'), goals).encode('utf-8')
                 kind = 'text/html; charset=utf-8'
             self.send_response(200)
             self.send_header('Content-Type', kind)

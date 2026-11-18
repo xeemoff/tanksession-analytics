@@ -12,7 +12,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Compile all source for Python 3 CI syntax validation
+      - name: Compile Python 3 source (does not validate Python 2.7)
         run: python -m compileall -q src tools tests
-      - name: Run isolated unit and simulated-client tests
+      - name: Unit and simulated game-client tests
         run: python -m unittest discover -s tests -v
+      - name: Simulated delayed result
+        run: python tools/simulate_capture.py
+      - name: Performance smoke test (10k synthetic battles)
+        run: python tools/benchmark.py --battles 10000

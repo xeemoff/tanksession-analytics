@@ -13,7 +13,7 @@ class BuildTests(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()
         self.archive = os.path.join(self.folder.name, 'sample.mtmod')
-        self.meta = b'<root><id>test.mod</id><version>0.4.0-rc1</version><name>Test</name></root>'
+        self.meta = b'<root><id>test.mod</id><version>0.4.0-rc2</version><name>Test</name></root>'
 
     def tearDown(self):
         self.folder.cleanup()
@@ -31,7 +31,7 @@ class BuildTests(unittest.TestCase):
 
     def test_valid_stored_mtmod(self):
         self.make_archive()
-        self.assertEqual(verify_mtmod(self.archive)['version'], '0.4.0-rc1')
+        self.assertEqual(verify_mtmod(self.archive)['version'], '0.4.0-rc2')
         self.assertEqual(verify_mtmod(self.archive)['compiled_modules'], 2)
 
     def test_reject_compressed_package(self):
