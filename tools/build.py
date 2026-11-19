@@ -75,8 +75,11 @@ def verify_mtmod(path, expected_id=None, expected_version=None):
                 sum(item.file_size for item in members) > MAX_PACKAGE_BYTES or
                 any(item.file_size > MAX_MEMBER_BYTES for item in members)):
             raise ValueError('Package members exceed the size limit')
-        for name in names:
-            if (not name or name.startswith('/') or '\\' in name or
+        for item in members:
+            # ZipInfo normalizes separators on Windows even while reading.
+            # Check the original central-directory name before trusting it.
+            name = item.orig_filename
+            if (name != item.filename or not name or name.startswith('/') or '\\' in name or
                     ':' in name or any(part in ('', '.', '..') for part in name.split('/'))):
                 raise ValueError('Unsafe path in .mtmod: ' + name)
         if 'meta.xml' not in names or ENTRY not in names:

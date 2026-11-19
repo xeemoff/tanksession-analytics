@@ -37,7 +37,12 @@ class BuildTests(unittest.TestCase):
                 if name != omit:
                     output.writestr(name, self.header_fixture if bytecode is None else bytecode)
             if extra:
-                output.writestr(extra, b'code')
+                # Preserve the deliberately unsafe raw name on every OS.
+                # Passing a string to writestr/ZipInfo normalizes Windows '\\'.
+                member = zipfile.ZipInfo()
+                member.filename = member.orig_filename = extra
+                member.compress_type = compression
+                output.writestr(member, b'code')
 
     def test_valid_manifest_and_headers_have_explicit_structural_scope(self):
         self.make_archive()
@@ -80,6 +85,20 @@ class BuildTests(unittest.TestCase):
     def test_reject_path_traversal(self):
         for path in ('../private.txt', '/absolute.txt', 'a/./file', 'a\\file'):
             self.make_archive(extra=path)
+            with self.assertRaisesRegex(ValueError, 'Unsafe'):
+                verify_mtmod(self.archive)
+
+    def test_reject_raw_name_even_when_zipfile_normalizes_it_on_windows(self):
+        raw_name = 'a\\file'
+        self.make_archive(extra=raw_name)
+        # Real ZIP bytes, with only the platform separator varied. This covers
+        # the same read-time normalization on Linux and Windows CI runners.
+        with mock.patch.object(zipfile.os, 'sep', '\\'):
+            with zipfile.ZipFile(self.archive) as archive:
+                member = next(item for item in archive.infolist()
+                              if item.orig_filename == raw_name)
+                self.assertEqual(member.filename, 'a/file')
+                self.assertNotEqual(member.orig_filename, member.filename)
             with self.assertRaisesRegex(ValueError, 'Unsafe'):
                 verify_mtmod(self.archive)
 
