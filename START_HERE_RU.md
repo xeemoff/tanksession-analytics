@@ -74,4 +74,4 @@ python tools/maintain_data.py --data "D:\your-folder\battles.jsonl"
 
 Для компактирования добавь `--compact`, предварительно **закрыв игру и панель**. Резервная копия исходных байтов остаётся рядом. Не запускай несколько записывающих клиентов с одним журналом.
 
-[README](README.md) · [Инженерный кейс для портфолио](docs/ARCHITECTURE_RU.md) · [Публикация](docs/PUBLICATION_RU.md)
+[README](README.md) · [Архитектура](docs/ARCHITECTURE_RU.md) · [Публикация](docs/PUBLICATION_RU.md)

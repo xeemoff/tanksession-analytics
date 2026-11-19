@@ -134,7 +134,7 @@ python tools/diagnose_log.py --log "D:\your-folder\python.log" --json
 ## Материалы
 
 - [Быстрый старт](START_HERE_RU.md)
-- [Архитектура и кейсы для собеседования](docs/ARCHITECTURE_RU.md)
+- [Архитектура и инженерные решения](docs/ARCHITECTURE_RU.md)
 - [Проверка клиента](docs/CHECK_CLIENT_RU.md) и [протокол](docs/CLIENT_VALIDATION_RU.md)
 - [Подробности интеграции](docs/integration.md)
 - [История изменений](CHANGELOG.md) и [план развития](docs/roadmap.md)
