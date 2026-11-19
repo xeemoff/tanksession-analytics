@@ -1,4 +1,4 @@
-name: Unit tests
+name: Tests and candidate builds
 on: [push, pull_request]
 
 permissions:
@@ -29,8 +29,59 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Simulated delayed result
         run: python tools/simulate_capture.py
+      - name: Check UI snapshots against the Python contract
+        run: python tools/generate_ui_fixtures.py --check
       - name: Performance smoke test (10k synthetic battles)
         run: python tools/benchmark.py --battles 10000
+
+  hangar-ui:
+    name: React / TypeScript / browser preview
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install pinned UI dependencies
+        working-directory: ui
+        run: npm ci
+      - name: Check TypeScript and presentation transport
+        working-directory: ui
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Install browser test runtime
+        working-directory: ui
+        run: npx playwright install --with-deps chromium
+      - name: Exercise the actual React UI and capture preview
+        working-directory: ui
+        run: npm run test:browser
+      - name: Package browser preview with prebuilt assets
+        run: python tools/package_preview.py
+      - name: Upload browser preview and screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: tanksession-hangar-preview-${{ github.sha }}
+          path: |
+            dist/*_Preview.zip
+            dist/*_Preview.zip.sha256
+            ui/test-results/hangar-demo.png
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload browser failure details
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tanksession-ui-test-details-${{ github.sha }}
+          path: ui/test-results/
+          retention-days: 7
 
   python2-build:
     name: CPython 2.7 / reproducible mtmod (game unverified)
@@ -44,6 +95,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Build the bundled UI assets
+        working-directory: ui
+        run: |
+          npm ci
+          npm run build
       - name: Build isolated CPython 2.7.18 from official source
         shell: bash
         run: |
@@ -70,7 +131,9 @@ jobs:
           }
           printf 'PYTHON2=%s/python\n' "$PWD" >> "$GITHUB_ENV"
       - name: Real Python 2.7 runtime, compilation and reproducibility tests
-        run: python -m unittest discover -s tests -p test_build.py -v
+        run: |
+          python -m unittest discover -s tests -p test_build.py -v
+          "$PYTHON2" -m unittest discover -s tests -p test_gameface.py -v
       - name: Build candidate and inspect structure
         shell: bash
         run: |

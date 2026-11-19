@@ -1,6 +1,6 @@
 <root>
   <id>ru.tanksession.analytics</id>
-  <version>0.4.0-rc3</version>
+  <version>0.4.0-rc4</version>
   <name>TankSession Analytics</name>
-  <description>Local battle analytics and CSV export</description>
+  <description>Local battle analytics with an experimental Gameface hangar view</description>
 </root>

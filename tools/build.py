@@ -29,9 +29,20 @@ MAX_MEMBER_BYTES = 2 * 1024 * 1024
 # An explicit release manifest also detects an accidentally omitted dependency.
 REQUIRED_MODULES = frozenset([ENTRY] + [
     GAME_ROOT + 'tanksession_analytics/' + name + '.pyc'
-    for name in ('__init__', 'analytics', 'core', 'game', 'goals',
-                 'recorder', 'recovery', 'storage')
+    for name in ('__init__', 'analytics', 'core', 'game', 'gameface', 'goals',
+                 'presentation', 'recorder', 'recovery', 'storage')
 ])
+UI_ROOT = 'res/gui/gameface/mods/tanksession/'
+RESOURCE_MAP = 'res/mods/configs/res_map/ru.tanksession.analytics.json'
+ASSET_SOURCES = {
+    UI_ROOT + 'Analytics.html': os.path.join(ROOT, 'ui', 'dist', 'index.html'),
+    UI_ROOT + 'app.js': os.path.join(ROOT, 'ui', 'dist', 'app.js'),
+    UI_ROOT + 'app.css': os.path.join(ROOT, 'ui', 'dist', 'app.css'),
+    UI_ROOT + 'THIRD_PARTY_LICENSES.txt': os.path.join(ROOT, 'ui', 'dist', 'THIRD_PARTY_LICENSES.txt'),
+    RESOURCE_MAP: os.path.join(SRC, *RESOURCE_MAP.split('/')),
+}
+REQUIRED_ASSETS = frozenset(ASSET_SOURCES)
+REQUIRED_FILES = REQUIRED_MODULES | REQUIRED_ASSETS | {'meta.xml'}
 _SAFE_METADATA = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$')
 
 
@@ -50,6 +61,35 @@ def _metadata(raw):
 def project_metadata():
     with open(os.path.join(SRC, 'meta.xml'), 'rb') as source:
         return _metadata(source.read())
+
+
+def _validate_assets(assets):
+    """Check bundled UI resources and their fixed resource-map registration."""
+    text = {}
+    for name in REQUIRED_ASSETS:
+        data = assets[name]
+        if not data or len(data) > MAX_MEMBER_BYTES:
+            raise ValueError('Missing or oversized UI asset: ' + name)
+        try:
+            text[name] = data.decode('utf-8')
+        except UnicodeDecodeError as error:
+            raise ValueError('UI asset is not UTF-8: ' + name) from error
+    layout = json.loads(text[RESOURCE_MAP])
+    expected = {
+        'itemID': 'mods/tanksession/Analytics/layoutID',
+        'type': 'Layout',
+        'path': 'coui://gui/gameface/mods/tanksession/Analytics.html',
+        'parameters': {'entrance': 'Analytics', 'extension': '', 'impl': 'gameface'},
+    }
+    if layout != [expected]:
+        raise ValueError('Unexpected Gameface resource map')
+    html = text[UI_ROOT + 'Analytics.html']
+    if not re.search(r'src=[\"\'](?:\./)?app\.js[\"\']', html):
+        raise ValueError('UI HTML must reference the bundled app.js')
+    if not re.search(r'href=[\"\'](?:\./)?app\.css[\"\']', html):
+        raise ValueError('UI HTML must reference the bundled app.css')
+    if 'MIT License' not in text[UI_ROOT + 'THIRD_PARTY_LICENSES.txt']:
+        raise ValueError('Missing bundled UI dependency license notices')
 
 
 def verify_mtmod(path, expected_id=None, expected_version=None):
@@ -89,7 +129,10 @@ def verify_mtmod(path, expected_id=None, expected_version=None):
         missing = REQUIRED_MODULES.difference(names)
         if missing:
             raise ValueError('Missing required modules: ' + ', '.join(sorted(missing)))
-        unexpected = set(names).difference(REQUIRED_MODULES | {'meta.xml'})
+        missing_assets = REQUIRED_ASSETS.difference(names)
+        if missing_assets:
+            raise ValueError('Missing required UI assets: ' + ', '.join(sorted(missing_assets)))
+        unexpected = set(names).difference(REQUIRED_FILES)
         if unexpected:
             raise ValueError('Unexpected package files: ' + ', '.join(sorted(unexpected)))
         mod_id, version = _metadata(archive.read('meta.xml'))
@@ -106,8 +149,10 @@ def verify_mtmod(path, expected_id=None, expected_version=None):
                 raise ValueError('Expected a CPython 2.7 bytecode header: ' + name)
             if data[8:9] != b'c':
                 raise ValueError('Expected a marshalled code-object marker: ' + name)
+        _validate_assets({name: archive.read(name) for name in REQUIRED_ASSETS})
         return {'id': mod_id, 'version': version,
                 'compiled_modules': len(REQUIRED_MODULES),
+                'ui_assets': len(REQUIRED_ASSETS),
                 'validation': 'structure-and-headers-only'}
 
 
@@ -155,6 +200,13 @@ def build(python2):
             source_names.add(relative)
     if {name + 'c' for name in source_names} != REQUIRED_MODULES:
         raise ValueError('Source modules differ from the release manifest; update REQUIRED_MODULES')
+    assets = {}
+    for name, source_path in ASSET_SOURCES.items():
+        if not os.path.isfile(source_path) or os.path.islink(source_path):
+            raise ValueError('UI assets unavailable; run npm ci and npm run build in ui/ first: ' + name)
+        with open(source_path, 'rb') as source:
+            assets[name] = source.read(MAX_MEMBER_BYTES + 1)
+    _validate_assets(assets)
     os.makedirs(OUT, exist_ok=True)
     target = os.path.join(OUT, '%s_%s.mtmod' % (mod_id, version))
     with tempfile.TemporaryDirectory(prefix='tanksession-build-') as temp:
@@ -165,6 +217,11 @@ def build(python2):
             destination = os.path.join(stage, *name.split('/'))
             os.makedirs(os.path.dirname(destination), exist_ok=True)
             shutil.copyfile(os.path.join(SRC, *name.split('/')), destination)
+        for name, data in assets.items():
+            destination = os.path.join(stage, *name.split('/'))
+            os.makedirs(os.path.dirname(destination), exist_ok=True)
+            with open(destination, 'wb') as target_asset:
+                target_asset.write(data)
         helper = os.path.join(ROOT, 'tools', 'verify_python2.py')
         compiled = subprocess.run(
             [python2, '-S', '-B', helper, '--compile-stage', stage],
@@ -178,7 +235,7 @@ def build(python2):
         os.close(temporary_fd)
         try:
             with zipfile.ZipFile(temporary_target, 'w', zipfile.ZIP_STORED) as archive:
-                for name in sorted(REQUIRED_MODULES | {'meta.xml'}):
+                for name in sorted(REQUIRED_FILES):
                     info = zipfile.ZipInfo(name, date_time=ZIP_DATE)
                     info.compress_type = zipfile.ZIP_STORED
                     info.create_system = 3

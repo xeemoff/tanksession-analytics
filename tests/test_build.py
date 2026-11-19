@@ -1,5 +1,6 @@
 import hashlib
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -12,6 +13,7 @@ from unittest import mock
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
 from build import (build, verify_mtmod, project_metadata, ENTRY, REQUIRED_MODULES,
+                   REQUIRED_ASSETS, REQUIRED_FILES, UI_ROOT, RESOURCE_MAP,
                    PY27_MAGIC, ZIP_DATE)
 
 
@@ -25,6 +27,17 @@ class BuildTests(unittest.TestCase):
         # Header-only fixture, intentionally NOT executable bytecode.
         # --verify promises structure/headers, never full bytecode validation.
         self.header_fixture = PY27_MAGIC + b'\x00' * 4 + b'c' + b'\x00' * 8
+        self.assets = {
+            UI_ROOT + 'Analytics.html': b'<html><link href="app.css"><script src="app.js"></script></html>',
+            UI_ROOT + 'app.js': b'/* test asset, not a React application */',
+            UI_ROOT + 'app.css': b'body { display: flex; }',
+            UI_ROOT + 'THIRD_PARTY_LICENSES.txt': b'MIT License\nTest fixture only',
+            RESOURCE_MAP: json.dumps([{
+                'itemID': 'mods/tanksession/Analytics/layoutID', 'type': 'Layout',
+                'path': 'coui://gui/gameface/mods/tanksession/Analytics.html',
+                'parameters': {'entrance': 'Analytics', 'extension': '', 'impl': 'gameface'},
+            }]).encode('utf-8'),
+        }
 
     def tearDown(self):
         self.folder.cleanup()
@@ -36,6 +49,9 @@ class BuildTests(unittest.TestCase):
             for name in sorted(REQUIRED_MODULES):
                 if name != omit:
                     output.writestr(name, self.header_fixture if bytecode is None else bytecode)
+            for name in sorted(REQUIRED_ASSETS):
+                if name != omit:
+                    output.writestr(name, self.assets[name])
             if extra:
                 # Preserve the deliberately unsafe raw name on every OS.
                 # Passing a string to writestr/ZipInfo normalizes Windows '\\'.
@@ -70,6 +86,29 @@ class BuildTests(unittest.TestCase):
     def test_reject_missing_dependency_even_with_many_other_modules(self):
         self.make_archive(omit='res/scripts/client/gui/mods/tanksession_analytics/core.pyc')
         with self.assertRaisesRegex(ValueError, 'Missing required modules'):
+            verify_mtmod(self.archive)
+
+    def test_reject_missing_ui_resource(self):
+        self.make_archive(omit=UI_ROOT + 'app.js')
+        with self.assertRaisesRegex(ValueError, 'Missing required UI assets'):
+            verify_mtmod(self.archive)
+
+    def test_reject_resource_map_pointing_to_a_different_view(self):
+        self.assets[RESOURCE_MAP] = self.assets[RESOURCE_MAP].replace(b'Analytics.html', b'Other.html')
+        self.make_archive()
+        with self.assertRaisesRegex(ValueError, 'resource map'):
+            verify_mtmod(self.archive)
+
+    def test_reject_html_without_its_bundle_reference(self):
+        self.assets[UI_ROOT + 'Analytics.html'] = b'<html><link href="app.css"></html>'
+        self.make_archive()
+        with self.assertRaisesRegex(ValueError, 'app.js'):
+            verify_mtmod(self.archive)
+
+    def test_reject_missing_dependency_license_notice(self):
+        self.assets[UI_ROOT + 'THIRD_PARTY_LICENSES.txt'] = b'no notices'
+        self.make_archive()
+        with self.assertRaisesRegex(ValueError, 'license'):
             verify_mtmod(self.archive)
 
     def test_reject_python_source(self):
@@ -170,7 +209,7 @@ class RealPython2BuildTests(unittest.TestCase):
                     self.assertEqual(checksum.read(), '%s  %s\n' %
                                      (info['sha256'], os.path.basename(path)))
                 with zipfile.ZipFile(path) as archive:
-                    self.assertEqual(archive.namelist(), sorted(REQUIRED_MODULES | {'meta.xml'}))
+                    self.assertEqual(archive.namelist(), sorted(REQUIRED_FILES))
                     self.assertTrue(all(item.date_time == ZIP_DATE for item in archive.infolist()))
                 second_path, second_info = build(os.environ['PYTHON2'])
                 with open(second_path, 'rb') as archive:

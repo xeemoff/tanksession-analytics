@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Simulated game API smoke tests, not real Lesta compatibility tests."""
 import importlib
+import json
 import os
 import sys
 import tempfile
@@ -242,6 +243,142 @@ class GameAdapterTests(unittest.TestCase):
         self.assertEqual(self.game._timer_ids, [])
         self.game.fini()
         self.assertEqual(cancelled, [1])
+
+    def _install_optional_ui(self, broken=False):
+        hangar = types.SimpleNamespace(onSpaceCreate=Event())
+        helpers = types.ModuleType('helpers')
+        helpers.dependency = types.SimpleNamespace(instance=lambda unused: hangar)
+        sys.modules['helpers'] = helpers
+        for name in ('skeletons', 'skeletons.gui', 'skeletons.gui.shared',
+                     'skeletons.gui.shared.utils'):
+            module = types.ModuleType(name)
+            module.__path__ = []
+            sys.modules[name] = module
+        sys.modules['skeletons.gui.shared.utils'].IHangarSpace = object
+        self.events.onAccountBecomeNonPlayer = Event()
+        self.events.onDisconnected = Event()
+        module = types.ModuleType('tanksession_analytics.gameface')
+
+        class UI(object):
+            def __init__(self, context, snapshot, log):
+                if broken:
+                    raise RuntimeError('private optional loader error')
+                self.context, self.snapshot = context, snapshot
+                self.closes = self.stops = self.hangars = self.refreshes = 0
+
+            def start(self):
+                return True
+
+            def close(self):
+                self.closes += 1
+
+            def stop(self):
+                self.stops += 1
+
+            def on_hangar(self):
+                self.hangars += 1
+
+            def refresh(self):
+                self.refreshes += 1
+
+        module.GamefaceController = UI
+        sys.modules['tanksession_analytics.gameface'] = module
+        return hangar
+
+    def test_gameface_opt_in_requires_boolean_true_and_is_off_by_default(self):
+        self.assertFalse(self.game._load_ui_opt_in())
+        path = os.path.join(self.folder.name, 'settings.json')
+        for value in (False, 'true', 1, None, True):
+            with open(path, 'w') as stream:
+                json.dump({'experimental_gameface_ui': value}, stream)
+            self.assertEqual(self.game._load_ui_opt_in(), value is True)
+
+    def test_disabled_ui_does_not_construct_loader_adapter(self):
+        self._install_optional_ui(broken=True)
+        self.game.init()
+        self.assertTrue(self.game._initialized)
+        self.assertIsNone(self.game._gameface)
+        self.assertFalse(any('Gameface startup failed' in line for line in self.errors))
+
+    def test_optional_ui_startup_failure_keeps_recording_available(self):
+        self._install_optional_ui(broken=True)
+        self.game._load_ui_opt_in = lambda: True
+        self.game.init()
+        self.assertTrue(self.game._initialized)
+        self.assertIsNotNone(self.game._recorder)
+        self.assertIsNone(self.game._gameface)
+        self.assertTrue(any('Optional Gameface startup failed' in line for line in self.errors))
+        self.assertFalse(any('private' in line for line in self.errors))
+
+    def test_missing_hangar_capability_keeps_ui_closed(self):
+        self.game._load_ui_opt_in = lambda: True
+        self.game.init()
+        self.assertTrue(self.game._initialized)
+        self.assertIsNone(self.game._gameface)
+        self.assertTrue(any('hangar capability unavailable' in line for line in self.notes))
+
+    def test_ui_account_requires_observed_hangar_and_fresh_non_replay_entity(self):
+        self.game.init()
+        self.player.arenaUniqueID = None
+        self.game._on_account_become_player()
+        self.assertIsNone(self.game._ui_account())
+        self.game._on_hangar_space_create()
+        self.assertEqual(self.game._ui_account(), '88')
+        self.player.databaseID = None
+        self.assertIsNone(self.game._ui_account())
+        self.player.databaseID = 88
+        self.player.arenaUniqueID = 1234
+        self.assertIsNone(self.game._ui_account())
+        self.player.arenaUniqueID = None
+        sys.modules['BattleReplay'].isPlaying = lambda: True
+        self.assertIsNone(self.game._ui_account())
+
+    def test_ui_lifecycle_closes_on_account_avatar_disconnect_and_unload(self):
+        hangar = self._install_optional_ui()
+        self.game._load_ui_opt_in = lambda: True
+        self.game.init()
+        ui = self.game._gameface
+        self.player.arenaUniqueID = None
+        hangar.onSpaceCreate.fire()
+        self.assertEqual(ui.context(), '88')
+        self.events.onAccountBecomePlayer.fire()
+        self.assertIsNone(ui.context())
+        hangar.onSpaceCreate.fire()
+        self.events.onAvatarReady.fire()
+        hangar.onSpaceCreate.fire()
+        self.events.onAccountBecomeNonPlayer.fire()
+        hangar.onSpaceCreate.fire()
+        self.events.onDisconnected.fire()
+        self.assertEqual(ui.closes, 4)
+        self.game.fini()
+        self.assertEqual(ui.stops, 1)
+        self.assertEqual(hangar.onSpaceCreate.handlers, [])
+        self.assertEqual(self.events.onAccountBecomeNonPlayer.handlers, [])
+        self.assertEqual(self.events.onDisconnected.handlers, [])
+
+    def test_ui_snapshot_is_scoped_to_fresh_account_and_invalid_goals_error(self):
+        self.game.init()
+        self.player.arenaUniqueID = None
+        self.game._on_hangar_space_create()
+        self.game._store.append({'arena_id': '1', 'account_id': '88',
+                                 'timestamp': 1700000000, 'outcome': 'win'})
+        self.game._store.append({'arena_id': '2', 'account_id': '99',
+                                 'timestamp': 1700000001, 'outcome': 'loss'})
+        snapshot = self.game._ui_snapshot('88', None)
+        self.assertEqual(snapshot['summary']['battles'], 1)
+        self.assertEqual(snapshot['summary']['wins'], 1)
+        self.assertNotIn('account_id', json.dumps(snapshot))
+        self.player.databaseID = 99
+        self.assertEqual(self.game._ui_snapshot('88', None)['status'], 'account_unavailable')
+        path = os.path.join(self.folder.name, 'goals.json')
+        with open(path, 'w') as stream:
+            stream.write('invalid goals with PRIVATE_VALUE')
+        with self.assertRaises(ValueError):
+            self.game._ui_snapshot('99', None)
+        self.assertFalse(any('PRIVATE_VALUE' in line for line in self.notes))
+        with open(path, 'w') as stream:
+            json.dump([], stream)
+        self.assertEqual(self.game._ui_snapshot('99', None)['goals'], [])
 
 
 if __name__ == '__main__':

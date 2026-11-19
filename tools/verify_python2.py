@@ -74,6 +74,7 @@ def runtime_suite():
     from tanksession_analytics.core import normalize_result, summarize, validate_record
     from tanksession_analytics.goals import evaluate_goals, validate_goals
     from tanksession_analytics.recorder import ResultRecorder
+    from tanksession_analytics.presentation import build_snapshot, validate_request
     from tanksession_analytics.storage import BattleStore, PendingJournal
 
     class Python2RuntimeTests(unittest.TestCase):
@@ -162,6 +163,25 @@ def runtime_suite():
             self.assertEqual(len(results), 2)
             self.assertTrue(all(item['battles'] == 5 and item['status'] == 'in_progress'
                                 for item in results))
+
+        def test_hangar_snapshot_is_json_safe_and_account_scoped(self):
+            rows = [self.make_record(500 + i) for i in range(20)]
+            rows.append(dict(self.make_record(999), account_id='202', vehicle=u'Другой танк'))
+            request = validate_request({'protocol': 1, 'request_id': 'py27',
+                                        'vehicle': u'ИС-7', 'window': 10})
+            snapshot = build_snapshot(rows, '101', request=request, now=1700000999)
+            self.assertEqual(snapshot['summary']['battles'], 20)
+            self.assertEqual(snapshot['comparison']['damage_delta'], 0.0)
+            self.assertEqual(snapshot['request_id'], 'py27')
+            self.assertEqual(len(snapshot['history']), 12)
+            self.assertEqual([item['name'] for item in snapshot['vehicles']], [u'ИС-7'])
+            encoded = json.dumps(snapshot, ensure_ascii=False, allow_nan=False)
+            self.assertNotIn('account_id', encoded)
+            self.assertNotIn('arena_id', encoded)
+            self.assertEqual(json.loads(encoded)['history'][0]['vehicle'], u'ИС-7')
+            hidden = build_snapshot(rows, None, now=1700000999)
+            self.assertEqual(hidden['status'], 'account_unavailable')
+            self.assertEqual(hidden['history'], [])
 
     return unittest.defaultTestLoader.loadTestsFromTestCase(Python2RuntimeTests)
 

@@ -1,6 +1,28 @@
-# Быстрый старт — TankSession Analytics 0.4.0-rc3
+# Быстрый старт — TankSession Analytics 0.4.0-rc4
 
-## Посмотреть демо
+## Посмотреть новый экран
+
+В успешном запуске [GitHub Actions](https://github.com/xeemoff/tanksession-analytics/actions/workflows/tests.yml) скачай artifact `tanksession-hangar-preview-...`, затем распакуй вложенный `TankSession_Analytics_0.4.0-rc4_Preview.zip`. Нужны Python 3.9+ и браузер. Запусти **demo_hangar.cmd** или:
+
+```powershell
+python tools/preview_ui.py --demo
+```
+
+Новый экран показывает 48 вымышленных боёв: фильтр техники, окна 10/30/100, показатели, график, сравнение, цели и последние результаты. Надпись «Демо» явно указывает источник. Это браузерный просмотр интерфейса React; он не устанавливает мод и не проверяет Gameface в игре.
+
+При работе с исходным кодом сначала собери ресурсы с Node.js 20+:
+
+```powershell
+cd ui
+npm ci
+npm run build
+cd ..
+python tools/preview_ui.py --demo
+```
+
+Свою историю можно открыть командой `python tools/preview_ui.py --data "путь к battles.jsonl" --account "ID своего аккаунта"`. Для игрового окна нужны отдельный загрузчик OpenWG Gameface и настройка включения: [подробная инструкция](docs/GAMEFACE_RU.md). Совместимость с реальным клиентом остаётся неподтверждённой.
+
+## Посмотреть прежнюю панель с CSV
 
 Нужны Python 3.9+ и браузер. На Windows дважды нажми **demo_dashboard.cmd**. Через терминал:
 
@@ -50,13 +72,13 @@ python tools/benchmark.py --battles 100000
 
 **Совместимость с актуальным клиентом ещё не подтверждена.** Успешный CI и пакет `.mtmod` не заменяют такую проверку.
 
-Используй [пошаговый тест-план](docs/CHECK_CLIENT_RU.md) и [протокол совместимости](docs/CLIENT_VALIDATION_RU.md). Артефакт успешной CI-сборки содержит пакет и SHA-256. Локальная сборка требует отдельного CPython 2.7:
+Используй [пошаговый тест-план](docs/CHECK_CLIENT_RU.md) и [протокол совместимости](docs/CLIENT_VALIDATION_RU.md). Артефакт успешной CI-сборки содержит пакет и SHA-256. Локальная сборка требует отдельного CPython 2.7 и предварительно собранного интерфейса `ui/dist`:
 
 ```powershell
 python tools/build.py --python2 "C:\Python27\python.exe"
 ```
 
-Пакет создаётся в `dist/ru.tanksession.analytics_0.4.0-rc3.mtmod`. Автоматической установки нет. Восстановление через игровой кэш остаётся выключенным до проверки его API.
+Пакет создаётся в `dist/ru.tanksession.analytics_0.4.0-rc4.mtmod`. Автоматической установки нет. Восстановление через игровой кэш остаётся выключенным до проверки его API.
 
 Для обсуждения неисправностей достаточно версии клиента, описания сценария и обезличенных счётчиков:
 

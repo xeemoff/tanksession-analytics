@@ -3,7 +3,7 @@
 
 Only hooks own battle-result events and optional account/hangar events.
 No network requests, game-mechanic patches or raw-result dumps.
-The cache API is experimental and opt-in; see docs/integration.md.
+The cache and Gameface APIs are experimental and opt-in; see docs/integration.md.
 """
 import json
 import os
@@ -31,6 +31,8 @@ _hooks = []
 _timer_ids = []
 _login_generation = 0
 _notices = set()
+_gameface = None
+_in_hangar = False
 
 
 def _log(message):
@@ -103,6 +105,7 @@ def _is_replay():
 
 
 def _on_avatar_ready(*args, **kwargs):
+    _leave_hangar()
     if _pending is None or _is_replay():
         return
     arena = _arena_id_from_player()
@@ -136,6 +139,8 @@ def _on_battle_results(is_player_vehicle, results):
             _log('Skipped incomplete/ambiguous battle result')
         elif status in ('identity_missing', 'account_mismatch'):
             _log('Skipped battle due to account identity: ' + status)
+        if status in ('saved', 'updated') and _gameface is not None:
+            _gameface.refresh()
     except Exception as error:
         _error('Battle capture failed: ' + type(error).__name__)
 
@@ -176,6 +181,7 @@ def _cancel_recovery_timers():
 
 def _on_account_become_player(*args, **kwargs):
     global _account_id, _login_generation
+    _leave_hangar()
     # A new login event must invalidate the previous account, even if the
     # current client's databaseID is temporarily unavailable.
     _account_id = None
@@ -205,6 +211,10 @@ def _on_account_become_player(*args, **kwargs):
 
 
 def _on_hangar_space_create(*args, **kwargs):
+    global _in_hangar
+    _in_hangar = bool(_initialized)
+    if _gameface is not None:
+        _gameface.on_hangar()
     _try_recover()
     try:
         from gui import SystemMessages
@@ -229,17 +239,105 @@ def _on_hangar_space_create(*args, **kwargs):
         _log('Hangar notification unavailable for this game build')
 
 
-def _load_cache_opt_in():
-    """Off by default; reads one small local settings file, no game assets."""
+def _read_local_settings():
+    """Read bounded local opt-ins; no imported loader when the UI is disabled."""
     path = os.path.join(os.path.dirname(default_path()), 'settings.json')
     try:
         if not os.path.isfile(path) or os.path.getsize(path) > 4096:
-            return False
+            return {}
         with open(path, 'rb') as stream:
-            settings = json.loads(stream.read().decode('utf-8'))
-        return isinstance(settings, dict) and settings.get('experimental_cache_recovery') is True
+            raw = stream.read(4097)
+        if len(raw) > 4096:
+            return {}
+        settings = json.loads(raw.decode('utf-8'))
+        return settings if isinstance(settings, dict) else {}
     except (IOError, OSError, ValueError, UnicodeError):
-        return False
+        return {}
+
+
+def _load_cache_opt_in():
+    return _read_local_settings().get('experimental_cache_recovery') is True
+
+
+def _load_ui_opt_in():
+    return _read_local_settings().get('experimental_gameface_ui') is True
+
+
+def _leave_hangar(*args, **kwargs):
+    global _in_hangar
+    _in_hangar = False
+    if _gameface is not None:
+        _gameface.close()
+
+
+def _ui_account():
+    """A current Account entity in the hangar, never a cached login identity."""
+    if not _initialized or not _in_hangar or _is_replay():
+        return None
+    try:
+        player = BigWorld.player()
+        if player is None:
+            return None
+        # An Avatar may appear before onAvatarReady. Fail closed in that gap.
+        if (getattr(player, 'arenaUniqueID', None) not in (None, 0) or
+                getattr(player, 'arena', None) is not None):
+            return None
+        return _verified_account(getattr(player, 'databaseID', None))
+    except Exception:
+        return None
+
+
+def _ui_goals():
+    from .goals import validate_goals
+    path = os.path.join(os.path.dirname(default_path()), 'goals.json')
+    try:
+        if not os.path.isfile(path):
+            return []
+        with open(path, 'rb') as stream:
+            raw = stream.read(65537)
+        if len(raw) > 65536:
+            raise ValueError('Goals file too large')
+        goals = validate_goals(json.loads(raw.decode('utf-8')))
+        _notices.discard('ui_goals')
+        return goals
+    except (IOError, OSError, ValueError, UnicodeError):
+        _notice_once('ui_goals', 'Gameface: goals file unavailable or invalid')
+        raise ValueError('Goals unavailable')
+
+
+def _ui_snapshot(account, request):
+    from .presentation import build_snapshot
+    # The controller rechecks identity immediately before delivering this
+    # snapshot, including if a provider caused a re-entrant client event.
+    if account != _ui_account() or _store is None:
+        return build_snapshot([], None, request=request, source='game')
+    return build_snapshot(list(_store.records), account, request=request,
+                          goals=_ui_goals(),
+                          diagnostics=dict(_store.diagnostics), source='game')
+
+
+def _start_gameface():
+    global _gameface
+    try:
+        if not _load_ui_opt_in():
+            return
+        # An observed hangar event is required; guessing the current space
+        # from cached account data can expose a window during a battle.
+        if _hangar_space is None:
+            _log('Gameface: hangar capability unavailable; UI disabled')
+            return
+        from .gameface import GamefaceController
+        _gameface = GamefaceController(_ui_account, _ui_snapshot, _log)
+        if not _gameface.start():
+            _gameface = None
+            return
+        _attach_event('onAccountBecomeNonPlayer', _leave_hangar)
+        _attach_event('onDisconnected', _leave_hangar)
+    except Exception as error:
+        _error('Optional Gameface startup failed: ' + type(error).__name__)
+        if _gameface is not None:
+            _gameface.stop()
+        _gameface = None
 
 
 def _attach_event(name, callback, required=False):
@@ -292,7 +390,9 @@ def init():
             _hangar_space = dependency.instance(IHangarSpace)
             _hangar_space.onSpaceCreate += _on_hangar_space_create
         except Exception:
+            _hangar_space = None
             _log('Hangar notification hook unavailable')
+        _start_gameface()
     except Exception as error:
         _error('Startup failed: %s (%s)' % (stage, type(error).__name__))
         fini()
@@ -301,6 +401,11 @@ def init():
 def fini():
     global _initialized, _store, _pending, _recorder, _recovery, _hangar_space, _account_id
     global _login_generation
+    global _gameface, _in_hangar
+    _in_hangar = False
+    if _gameface is not None:
+        _gameface.stop()
+    _gameface = None
     _login_generation += 1
     if _recovery is not None:
         _recovery.stop()
