@@ -7,6 +7,7 @@ consistent with the dashboard. This is NOT a measure of actual battle start time
 from __future__ import division
 
 from datetime import datetime
+from collections import deque
 
 from .core import _as_text, _non_negative_int, summarize
 
@@ -144,13 +145,23 @@ def rolling_damage(records, window=10, max_points=80):
     if len(ordered) < window:
         return []
     points = []
-    for end in range(window, len(ordered) + 1):
-        block = ordered[end - window:end]
-        stats = summarize(block)
-        known = stats['damage_samples']
-        minimum = (7 * window + 9) // 10  # ceil(70%%), no float rounding.
-        mean = stats['avg_damage'] if known >= minimum else None
-        points.append((end, mean, known))
+    values = deque()
+    total, known = 0, 0
+    minimum = (7 * window + 9) // 10  # ceil(70%%), no float rounding.
+    for end, item in enumerate(ordered, 1):
+        value = _non_negative_int(item.get('damage'))
+        values.append(value)
+        if value is not None:
+            total += value
+            known += 1
+        if len(values) > window:
+            oldest = values.popleft()
+            if oldest is not None:
+                total -= oldest
+                known -= 1
+        if len(values) == window:
+            mean = round(total / known, 1) if known >= minimum else None
+            points.append((end, mean, known))
     try:
         limit = int(max_points)
     except (ValueError, TypeError, OverflowError):

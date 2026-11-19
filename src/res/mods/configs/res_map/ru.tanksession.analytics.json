@@ -1,0 +1,12 @@
+[
+  {
+    "itemID": "mods/tanksession/Analytics/layoutID",
+    "type": "Layout",
+    "path": "coui://gui/gameface/mods/tanksession/Analytics.html",
+    "parameters": {
+      "entrance": "Analytics",
+      "extension": "",
+      "impl": "gameface"
+    }
+  }
+]

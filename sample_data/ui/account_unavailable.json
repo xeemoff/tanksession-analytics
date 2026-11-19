@@ -1,0 +1,51 @@
+{
+  "comparison": {
+    "current": {
+      "avg_damage": null,
+      "avg_xp": null,
+      "battles": 0,
+      "damage_samples": 0,
+      "draws": 0,
+      "known_outcomes": 0,
+      "losses": 0,
+      "win_rate": null,
+      "wins": 0
+    },
+    "damage_delta": null,
+    "enough_current": false,
+    "enough_previous": false,
+    "previous": null,
+    "win_rate_delta_pp": null,
+    "window": 10
+  },
+  "goals": [],
+  "history": [],
+  "protocol": 1,
+  "quality": {
+    "conflicts": 0,
+    "incomplete_records": 0,
+    "invalid_records": 0,
+    "total_records": 0
+  },
+  "request_id": "fixture",
+  "selection": {
+    "vehicle": "",
+    "window": 10
+  },
+  "series": [],
+  "source": "demo",
+  "status": "account_unavailable",
+  "summary": {
+    "avg_damage": null,
+    "avg_xp": null,
+    "battles": 0,
+    "damage_samples": 0,
+    "draws": 0,
+    "known_outcomes": 0,
+    "losses": 0,
+    "win_rate": null,
+    "wins": 0
+  },
+  "updated_at": 1794943860,
+  "vehicles": []
+}

@@ -1,18 +1,154 @@
-name: Unit tests
+name: Tests and candidate builds
 on: [push, pull_request]
+
+permissions:
+  contents: read
+
 jobs:
   unit-tests:
-    runs-on: ubuntu-24.04
+    name: Python ${{ matrix.python-version }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.9', '3.12']
+        include:
+          - os: ubuntu-24.04
+            python-version: '3.9'
+          - os: ubuntu-24.04
+            python-version: '3.12'
+          - os: windows-2022
+            python-version: '3.12'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Compile all source for Python 3 CI syntax validation
+      - name: Compile Python 3 source
         run: python -m compileall -q src tools tests
-      - name: Run isolated unit and simulated-client tests
+      - name: Unit, HTTP and simulated game-client tests
         run: python -m unittest discover -s tests -v
+      - name: Simulated delayed result
+        run: python tools/simulate_capture.py
+      - name: Check UI snapshots against the Python contract
+        run: python tools/generate_ui_fixtures.py --check
+      - name: Performance smoke test (10k synthetic battles)
+        run: python tools/benchmark.py --battles 10000
+
+  hangar-ui:
+    name: React / TypeScript / browser preview
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Install pinned UI dependencies
+        working-directory: ui
+        run: npm ci
+      - name: Check TypeScript and presentation transport
+        working-directory: ui
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Install browser test runtime
+        working-directory: ui
+        run: npx playwright install --with-deps chromium
+      - name: Exercise the actual React UI and capture preview
+        working-directory: ui
+        run: npm run test:browser
+      - name: Package browser preview with prebuilt assets
+        run: python tools/package_preview.py
+      - name: Upload browser preview and screenshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: tanksession-hangar-preview-${{ github.sha }}
+          path: |
+            dist/*_Preview.zip
+            dist/*_Preview.zip.sha256
+            ui/test-results/hangar-demo.png
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload browser failure details
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tanksession-ui-test-details-${{ github.sha }}
+          path: ui/test-results/
+          retention-days: 7
+
+  python2-build:
+    name: CPython 2.7 / reproducible mtmod (game unverified)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PYTHONHASHSEED: '0'
+      PYTHONNOUSERSITE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: Build the bundled UI assets
+        working-directory: ui
+        run: |
+          npm ci
+          npm run build
+      - name: Build isolated CPython 2.7.18 from official source
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/Python-2.7.18.tar.xz"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --max-time 90 \
+            --output "$archive" \
+            https://www.python.org/ftp/python/2.7.18/Python-2.7.18.tar.xz
+          # Official release: https://www.python.org/downloads/release/python-2718/
+          # SHA256 cross-checked against pyenv's source manifest:
+          # https://github.com/pyenv/pyenv/blob/06fd1ce78890d8f79a0795e0fdfbe9a53916b82e/plugins/python-build/share/python-build/2.7.18
+          printf '%s  %s\n' \
+            b62c0e7937551d0cc02b8fd5cb0f544f9405bafc9a54d3808ed4594812edef43 \
+            "$archive" | sha256sum --check --strict -
+          tar -xJf "$archive" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/Python-2.7.18"
+          ./configure --without-ensurepip --disable-shared > "$RUNNER_TEMP/python27-configure.log" 2>&1 || {
+            tail -80 "$RUNNER_TEMP/python27-configure.log"
+            exit 1
+          }
+          make -j2 > "$RUNNER_TEMP/python27-build.log" 2>&1 || {
+            tail -100 "$RUNNER_TEMP/python27-build.log"
+            exit 1
+          }
+          printf 'PYTHON2=%s/python\n' "$PWD" >> "$GITHUB_ENV"
+      - name: Real Python 2.7 runtime, compilation and reproducibility tests
+        run: |
+          python -m unittest discover -s tests -p test_build.py -v
+          "$PYTHON2" -m unittest discover -s tests -p test_gameface.py -v
+      - name: Build candidate and inspect structure
+        shell: bash
+        run: |
+          python tools/build.py --python2 "$PYTHON2"
+          python tools/build.py --verify dist/*.mtmod
+      - name: Verify package checksum
+        shell: bash
+        working-directory: dist
+        run: sha256sum --check --strict *.sha256
+      - name: Upload test candidate (not a validated game release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: tanksession-mtmod-candidate-${{ github.sha }}
+          path: |
+            dist/*.mtmod
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 14
