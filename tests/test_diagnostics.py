@@ -8,6 +8,19 @@ from diagnose_log import summarize_log
 
 
 class DiagnosticsTests(unittest.TestCase):
+    def test_revision_and_paused_states_have_dedicated_counters(self):
+        data = summarize_log([
+            '[TankSession] Updated battle: complete',
+            '[TankSession] Battle result conflict: known fields differ',
+            '[TankSession] Collection paused: replay status unavailable',
+            '[TankSession] Account identity unavailable',
+        ])
+        self.assertEqual(data['battle_updated'], 1)
+        self.assertEqual(data['battle_conflict'], 1)
+        self.assertEqual(data['replay_api_unavailable'], 1)
+        self.assertEqual(data['identity_unavailable'], 1)
+        self.assertEqual(data['other_mod_messages'], 0)
+
     def test_count_and_not_echo_sensitive_values(self):
         lines = [
             'INFO: [TankSession] Started; local data path: C:/Users/User/private.jsonl',

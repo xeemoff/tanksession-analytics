@@ -12,6 +12,7 @@ import json
 import io
 import os
 import sys
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from string import Template
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -19,8 +20,9 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(ROOT, 'src', 'res', 'scripts', 'client', 'gui', 'mods'))
 from tanksession_analytics.storage import BattleStore
+from tanksession_analytics import __version__
 from tanksession_analytics.goals import evaluate_goals, validate_goals
-from tanksession_analytics.core import summarize, by_day, _non_negative_int
+from tanksession_analytics.core import summarize, by_day, _non_negative_int, validate_record
 from tanksession_analytics.analytics import (record_date, select_records,
     vehicle_table, window_comparison, rolling_damage, safe_window, valid_date)
 
@@ -35,26 +37,43 @@ class CachedJournal:
         self.path = path
         self.signature = object()
         self.data = []
+        self.state = 'missing'
+        self.diagnostics = {}
 
     def records(self):
         try:
             stat = os.stat(self.path)
-            signature = (stat.st_ino, stat.st_size, stat.st_mtime_ns)
+            if not os.path.isfile(self.path):
+                raise OSError('Expected a regular journal file')
+            signature = (stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+            # A cached file may have lost read permission without changing its
+            # content. Opening is cheap and checks current access/ACLs too.
+            with open(self.path, 'rb'):
+                pass
+            if signature != self.signature:
+                store = BattleStore(self.path)
+                self.data = store.records
+                self.diagnostics = dict(store.diagnostics)
+                self.signature = signature
+            self.state = 'ready' if self.data else 'empty'
         except FileNotFoundError:
-            signature = None
-        if signature != self.signature:
-            self.data = BattleStore(self.path).records if signature else []
-            self.signature = signature
+            self.data, self.diagnostics = [], {}
+            self.signature, self.state = None, 'missing'
+        except OSError:
+            # Never present stale cached statistics as a successful current read.
+            self.data, self.diagnostics = [], {}
+            self.signature, self.state = object(), 'unreadable'
         return self.data
 
 
 def load_goals(path):
     if not path:
         return []
-    if os.path.getsize(path) > 8192:
+    with open(path, 'rb') as stream:
+        raw = stream.read(8193)
+    if len(raw) > 8192:
         raise ValueError('Goals configuration is too large')
-    with open(path, 'r', encoding='utf-8') as stream:
-        return validate_goals(json.load(stream))
+    return validate_goals(json.loads(raw.decode('utf-8-sig')))
 
 
 def escape(value):
@@ -182,36 +201,91 @@ def battle_html(records):
     for record in reversed(records[-150:]):
         day = record_date(record) or '—'
         outcome = record.get('outcome')
-        css_class = outcome if outcome in labels else 'unknown'
+        css_class = outcome if isinstance(outcome, str) and outcome in labels else 'unknown'
         rows.append('<tr><td>%s</td><td>%s</td><td><span class="result %s">%s</span></td>'
                     '<td class="num">%s</td><td class="num">%s</td></tr>' %
                     (escape(day), escape(record.get('vehicle') or 'unknown'), css_class,
-                     escape(labels.get(outcome, 'Неизвестно')),
+                     escape(labels[css_class]),
                      escape(fmt(_non_negative_int(record.get('damage')))),
                      escape(fmt(_non_negative_int(record.get('xp'))))))
     return ''.join(rows) or '<tr><td colspan="5" class="hint">Боёв пока нет. Попробуйте демоданные.</td></tr>'
 
 
-def goals_html(records, goals):
+def goals_html(records, goals, account_filter=''):
     if not goals:
         return '<p class="hint">Цели не заданы. Используйте --goals путь/к/goals.json для персональных целей.</p>'
-    labels = {'in_progress': 'Нужно больше боёв',
+    labels = {'no_data': 'Нет боёв по выбранным фильтрам',
+              'in_progress': 'Нужно больше боёв',
               'insufficient_data': 'Недостаточно известных значений урона',
               'achieved': 'Цель достигнута', 'not_achieved': 'Цель пока не достигнута'}
     rows = []
-    for item in evaluate_goals(records, goals):
-        rows.append('<tr><td>%s</td><td class="num">%d</td><td class="num">%d/%d</td>'
+    for item in evaluate_goals(records, goals, account_id=account_filter):
+        rows.append('<tr><td>%s</td><td>%s</td><td class="num">%d</td>'
+                    '<td class="num">%d/%d</td><td class="num">%d/%d</td>'
                     '<td class="num">%s</td><td>%s</td></tr>' % (
-                        escape(item['vehicle']), item['target'], item['battles'], item['window'],
+                        escape(item['account_id'] or '—'), escape(item['vehicle']),
+                        item['target'], item['battles'], item['window'],
+                        item['known_damage'], item['battles'],
                         escape(fmt(item['avg_damage'])), escape(labels[item['status']])))
-    return ('<div class="scroll"><table><thead><tr><th>Танк</th><th class="num">Цель по урону</th>'
-            '<th class="num">Боёв</th><th class="num">Текущий средний</th><th>Статус</th></tr>'
+    if not rows:
+        return '<p class="hint">Для выбранного аккаунта цели не заданы.</p>'
+    return ('<div class="scroll"><table><thead><tr><th>Аккаунт</th><th>Танк</th><th class="num">Цель по урону</th>'
+            '<th class="num">Боёв</th><th class="num">Есть урон</th><th class="num">Текущий средний</th><th>Статус</th></tr>'
             '</thead><tbody>%s</tbody></table></div>' % ''.join(rows))
 
 
+def validated_records(records):
+    """Validate direct callers too; HTTP normally receives BattleStore records."""
+    clean, rejected = [], 0
+    for item in records:
+        valid = validate_record(item)
+        if valid is None:
+            rejected += 1
+        else:
+            clean.append(valid)
+    return clean, rejected
+
+
+def source_status_html(records, diagnostics=None, state='ready', demo=False):
+    diagnostics = diagnostics or {}
+    labels = {'ready': 'Журнал прочитан', 'empty': 'В журнале пока нет подходящих записей',
+              'missing': 'Журнал ещё не найден', 'unreadable': 'Не удалось прочитать журнал'}
+    title = 'Демонстрационные данные — вымышленные бои' if demo else labels.get(state, labels['ready'])
+    details = []
+    if state == 'missing':
+        details.append('Проверьте выбранный путь. После первой записи боя обновите страницу.')
+    elif state == 'unreadable':
+        details.append('Проверьте доступ к файлу и выбранный путь. Обновите страницу после исправления.')
+    if demo:
+        details.append('Демонстрация панели не подтверждает получение результатов из игры.')
+    stamps = [_non_negative_int(row.get('timestamp')) for row in records]
+    stamps = [stamp for stamp in stamps if stamp is not None]
+    if stamps:
+        try:
+            latest = datetime.fromtimestamp(max(stamps)).strftime('%d.%m.%Y %H:%M:%S')
+            details.append('Последний результат в журнале: %s (время получения, местное).' % latest)
+        except (OSError, ValueError, OverflowError):
+            pass
+    invalid = diagnostics.get('malformed', 0) + diagnostics.get('invalid', 0)
+    incomplete = sum(row.get('data_status') == 'incomplete' for row in records)
+    undated = sum(record_date(row) is None for row in records)
+    details.append('Боёв в журнале: %d · неполных: %d · отклонённых строк: %d · дополнений: %d · конфликтов: %d.' % (
+        len(records), incomplete, invalid, diagnostics.get('revisions', 0), diagnostics.get('conflicts', 0)))
+    if invalid or diagnostics.get('conflicts', 0):
+        details.append('Исходный файл сохранён. Для подробных счётчиков используйте проверку истории.')
+    if undated:
+        details.append('Записей без корректной даты: %d; они не входят в расчёты и CSV.' % undated)
+    return '<section class="panel status"><h2>%s</h2><p class="hint">%s</p></section>' % (
+        escape(title), ' '.join(escape(item) for item in details))
+
+
 def render(records, vehicle_filter='', from_day='', to_day='', source_label='',
-           account_filter='', window=10, goals=None):
+           account_filter='', window=10, goals=None, diagnostics=None,
+           source_state='ready', demo=False):
     """Render an escaped, script-free HTML page from local data only."""
+    records, rejected = validated_records(records)
+    diagnostics = dict(diagnostics or {})
+    diagnostics['invalid'] = diagnostics.get('invalid', 0) + rejected
     window = safe_window(window)
     from_day, to_day = valid_date(from_day), valid_date(to_day)
     vehicles = sorted(set(str(r.get('vehicle') or 'unknown') for r in records if isinstance(r, dict)))
@@ -243,7 +317,7 @@ def render(records, vehicle_filter='', from_day='', to_day='', source_label='',
     query = urlencode(filters)
     return Template('''<!doctype html><html lang="ru"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TankSession Analytics v0.3</title><style>
+<title>TankSession Analytics $version</title><style>
 *{box-sizing:border-box}body{margin:0;background:#0b1420;color:#edf5f7;font:15px/1.5 system-ui,Segoe UI,sans-serif}
 main{max-width:1200px;margin:auto;padding:38px 20px 75px}.eyebrow{color:#42d8c2;letter-spacing:.12em;font-weight:700;font-size:12px;text-transform:uppercase}
 h1{font-size:clamp(30px,5vw,48px);margin:6px 0 5px;letter-spacing:-.04em}h2{font-size:21px;margin:0 0 14px}
@@ -262,9 +336,10 @@ footer{color:#a1b6c9;font-size:12px;margin-top:30px}code{overflow-wrap:anywhere;
 @media(max-width:800px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.panel{padding:16px}}
 @media(max-width:450px){.stats,.stats.compare{grid-template-columns:1fr}}
 </style></head><body><main>
-<div class="eyebrow">Неофициальный проект · только локальные данные</div>
+<div class="eyebrow">Неофициальный проект · v$version · только локальные данные</div>
 <h1>TankSession <span style="color:#35ccb4">Analytics</span></h1>
 <p class="intro">Личный журнал боёв: сравнение танков, скользящий средний урон, история и экспорт. Данные не покидают компьютер.</p>
+$source_status
 <section class="panel"><form method="get" action="/"><label>Аккаунт<select name="account">$accounts</select></label>
 <label>Танк<select name="vehicle">$vehicles</select></label>
 <label>С даты<input type="date" name="from" value="$from_day"></label>
@@ -276,7 +351,7 @@ footer{color:#a1b6c9;font-size:12px;margin-top:30px}code{overflow-wrap:anywhere;
 <section class="panel"><h2>Сравнение двух последовательных периодов</h2>$comparison</section>
 <section class="panel"><h2>Скользящий средний урон</h2><p class="hint">Последние 80 точек, окно — $window боёв. Пробелы означают недостаток данных, а не нулевой урон.</p><div class="scroll">$rolling</div></section>
 <section class="panel"><h2>Средний урон по дням</h2><div class="scroll">$daily</div></section>
-<section class="panel"><h2>Персональные цели</h2><p class="hint">Оценка по последним боям выбранной техники. Цель засчитывается только на полном окне с достаточным количеством известных значений.</p>$goals</section>
+<section class="panel"><h2>Персональные цели</h2><p class="hint">Каждый аккаунт оценивается отдельно. Учитываются текущие фильтры. Нужны полное окно и известный урон минимум в 70% боёв; достижение проверяется до округления.</p>$goals</section>
 <section class="panel"><h2>Эффективность по танкам</h2><p class="hint">Сортировка по числу сыгранных боёв; прочерк означает отсутствие подтверждённой метрики.</p>
 <div class="scroll"><table><thead><tr><th>Техника</th><th class="num">Боёв</th><th class="num">Победы</th><th class="num">Средний урон</th><th class="num">Есть урон</th></tr></thead><tbody>$vehicles_table</tbody></table></div></section>
 <section class="panel"><h2>Последние 150 боёв</h2><div class="scroll"><table><thead><tr><th>Дата</th><th>Танк</th><th>Исход</th><th class="num">Урон</th><th class="num">Опыт</th></tr></thead><tbody>$battles</tbody></table></div></section>
@@ -285,10 +360,11 @@ footer{color:#a1b6c9;font-size:12px;margin-top:30px}code{overflow-wrap:anywhere;
         accounts=''.join(account_opts), vehicles=''.join(opts), windows=''.join(wopts),
         from_day=escape(from_day), to_day=escape(to_day), query=escape(query),
         cards=cards, comparison=comparison_html(selected, window), window=window,
-        goals=goals_html(selected, goals or []),
+        goals=goals_html(selected, goals or [], account_filter),
         daily=daily_chart(selected), rolling=rolling_chart(selected, window),
         vehicles_table=vehicle_html(selected), battles=battle_html(selected),
-        source=escape(source_label))
+        source=escape(source_label), version=escape(__version__),
+        source_status=source_status_html(records, diagnostics, source_state, demo))
 
 
 def _csv_safe(value):
@@ -305,6 +381,7 @@ def _csv_safe(value):
 def export_csv(records, vehicle_filter='', from_day='', to_day='',
                account_filter=''):
     """Return UTF-8 CSV of exactly the currently selected valid battles."""
+    records, _ = validated_records(records)
     selected = select_records(records, vehicle_filter, account_filter, from_day, to_day)
     output = io.StringIO(newline='')
     writer = csv.writer(output, lineterminator='\r\n')
@@ -325,46 +402,64 @@ def export_csv(records, vehicle_filter='', from_day='', to_day='',
     return ('\ufeff' + output.getvalue()).encode('utf-8')
 
 
-def main():
-    parser = argparse.ArgumentParser(description='TankSession Analytics (read-only localhost)')
-    parser.add_argument('--data', default=os.path.join(ROOT, 'sample_data', 'battles.jsonl'),
-                        help='Local JSONL data file (defaults to SYNTHETIC example data)')
-    parser.add_argument('--host', default='127.0.0.1')
-    parser.add_argument('--port', type=int, default=8765)
-    parser.add_argument('--goals', default='', help='Optional local JSON file with personal targets')
-    args = parser.parse_args()
-    if args.host not in ('127.0.0.1', 'localhost'):
-        parser.error('For privacy, only 127.0.0.1/localhost is supported')
-    if not 1 <= args.port <= 65535:
-        parser.error('Port must be 1..65535')
-    source = os.path.abspath(args.data)
-    try:
-        goals = load_goals(args.goals)
-    except (OSError, ValueError, TypeError) as error:
-        parser.error('Cannot load goals: %s' % error)
+def create_server(data_path, goals=None, host='127.0.0.1', port=8765, demo=None):
+    """Bind a read-only loopback server; port=0 selects a free local port.
+
+    Both the CLI and launcher use this factory, so HTTP tests exercise the
+    actual request handler. The caller owns serve_forever/server_close.
+    """
+    if host not in ('127.0.0.1', 'localhost'):
+        raise ValueError('Only 127.0.0.1/localhost is supported')
+    if not isinstance(port, int) or isinstance(port, bool) or not 0 <= port <= 65535:
+        raise ValueError('Port must be 0..65535')
+    source = os.path.abspath(data_path)
+    goals = validate_goals(goals or [])
+    if demo is None:
+        demo = os.path.realpath(source) == os.path.realpath(os.path.join(ROOT, 'sample_data', 'battles.jsonl'))
     journal = CachedJournal(source)
 
     class Handler(BaseHTTPRequestHandler):
+        def setup(self):
+            super().setup()
+            self.connection.settimeout(10)
+
+        def log_message(self, format, *args):
+            # Query strings can contain account IDs; do not write access logs.
+            pass
+
         def do_GET(self):
             # Reject hostile Host headers, including DNS rebinding aliases.
             if self.headers.get('Host', '') not in (
-                    '127.0.0.1:%d' % args.port, 'localhost:%d' % args.port,
+                    '127.0.0.1:%d' % self.server.server_port,
+                    'localhost:%d' % self.server.server_port,
                     '127.0.0.1', 'localhost'):
                 self.send_error(400, 'Unsupported Host')
                 return
-            parsed = urlsplit(self.path)
+            if len(self.path) > 8192:
+                self.send_error(414)
+                return
+            try:
+                parsed = urlsplit(self.path)
+                params = parse_qs(parsed.query, max_num_fields=30)
+            except ValueError:
+                self.send_error(400, 'Invalid query')
+                return
             if parsed.path not in ('/', '/index.html', '/export.csv'):
                 self.send_error(404)
                 return
-            params = parse_qs(parsed.query)
             get = lambda key: params.get(key, [''])[0]
             records = journal.records()
             if parsed.path == '/export.csv':
+                if journal.state in ('missing', 'unreadable'):
+                    self.send_error(503, 'Journal unavailable')
+                    return
                 data = export_csv(records, get('vehicle'), get('from'), get('to'), get('account'))
                 kind = 'text/csv; charset=utf-8'
             else:
                 data = render(records, get('vehicle'), get('from'), get('to'), source,
-                              get('account'), get('window'), goals).encode('utf-8')
+                              get('account'), get('window'), goals,
+                              diagnostics=journal.diagnostics, source_state=journal.state,
+                              demo=demo).encode('utf-8')
                 kind = 'text/html; charset=utf-8'
             self.send_response(200)
             self.send_header('Content-Type', kind)
@@ -381,10 +476,33 @@ def main():
             self.end_headers()
             self.wfile.write(data)
 
-    print('Dashboard: http://%s:%d/' % (args.host, args.port))
-    print('Data file: %s' % source)
-    print('Demo history is SYNTHETIC unless --data is provided. CTRL+C to stop.')
-    HTTPServer((args.host, args.port), Handler).serve_forever()
+    server = HTTPServer(('127.0.0.1', port), Handler)
+    server.journal = journal
+    return server
+
+
+def main():
+    parser = argparse.ArgumentParser(description='TankSession Analytics — локальная панель')
+    parser.add_argument('--data', default=os.path.join(ROOT, 'sample_data', 'battles.jsonl'),
+                        help='Путь к журналу; по умолчанию вымышленные демоданные')
+    parser.add_argument('--host', default='127.0.0.1')
+    parser.add_argument('--port', type=int, default=8765, help='Порт; 0 — выбрать свободный')
+    parser.add_argument('--goals', default='', help='JSON с персональными целями')
+    args = parser.parse_args()
+    try:
+        goals = load_goals(args.goals)
+        server = create_server(args.data, goals, args.host, args.port)
+    except (OSError, ValueError, TypeError, UnicodeError) as error:
+        parser.exit(1, 'Не удалось запустить панель (%s). Проверьте путь, цели и доступность порта.\n' % type(error).__name__)
+    print('Панель: http://127.0.0.1:%d/' % server.server_port, flush=True)
+    print('Источник: %s' % os.path.abspath(args.data), flush=True)
+    print('Без --data используются вымышленные демоданные. Ctrl+C — остановить.', flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
 
 
 if __name__ == '__main__':

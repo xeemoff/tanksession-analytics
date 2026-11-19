@@ -8,7 +8,6 @@ The cache API is experimental and opt-in; see docs/integration.md.
 import json
 import os
 import time
-import traceback
 
 import BigWorld
 import BattleReplay
@@ -17,7 +16,7 @@ from debug_utils import LOG_NOTE, LOG_ERROR
 
 from gui.mods.tanksession_analytics.core import summarize
 from gui.mods.tanksession_analytics.storage import BattleStore, PendingJournal, default_path
-from gui.mods.tanksession_analytics.recorder import ResultRecorder
+from gui.mods.tanksession_analytics.recorder import ResultRecorder, _verified_account
 from gui.mods.tanksession_analytics.recovery import CacheRecovery
 
 _PREFIX = '[TankSession] '
@@ -30,6 +29,8 @@ _initialized = False
 _account_id = None
 _hooks = []
 _timer_ids = []
+_login_generation = 0
+_notices = set()
 
 
 def _log(message):
@@ -38,6 +39,13 @@ def _log(message):
 
 def _error(message):
     LOG_ERROR(_PREFIX + str(message))
+
+
+def _notice_once(key, message):
+    """Explain a paused capability once per episode, without log flooding."""
+    if key not in _notices:
+        _notices.add(key)
+        _log(message)
 
 
 def _context():
@@ -84,9 +92,13 @@ def _arena_id_from_player():
 
 def _is_replay():
     try:
-        return bool(BattleReplay.isPlaying())
+        playing = bool(BattleReplay.isPlaying())
+        _notices.discard('replay_status')
+        return playing
     except Exception:
         # Do not collect if replay status cannot be determined.
+        _notice_once('replay_status',
+                     'Collection paused: replay status unavailable')
         return True
 
 
@@ -100,8 +112,8 @@ def _on_avatar_ready(*args, **kwargs):
     try:
         if _pending.start(arena, _context(), int(time.time())):
             _log('Staged own battle for delayed-result recovery')
-    except Exception:
-        _error('Unable to stage battle: ' + traceback.format_exc())
+    except Exception as error:
+        _error('Unable to stage battle: ' + type(error).__name__)
 
 
 def _on_battle_results(is_player_vehicle, results):
@@ -113,13 +125,19 @@ def _on_battle_results(is_player_vehicle, results):
         status, record = _recorder.receive(results, current_context=_context(),
                                             confirmed_own=True)
         if status == 'saved':
-            _log('Saved battle: ' + record['arena_id'])
+            _log('Saved battle: ' + record.get('data_status', 'incomplete'))
+        elif status == 'updated':
+            _log('Updated battle: ' + record.get('data_status', 'incomplete'))
+        elif status == 'conflict':
+            _log('Battle result conflict: existing record kept unchanged')
+        elif status == 'duplicate':
+            _log('Duplicate battle result; existing record unchanged')
         elif status == 'skipped':
             _log('Skipped incomplete/ambiguous battle result')
         elif status in ('identity_missing', 'account_mismatch'):
             _log('Skipped battle due to account identity: ' + status)
-    except Exception:
-        _error('Battle capture failed: ' + traceback.format_exc())
+    except Exception as error:
+        _error('Battle capture failed: ' + type(error).__name__)
 
 
 def _try_recover():
@@ -129,23 +147,40 @@ def _try_recover():
         player = BigWorld.player()
         if player is None:
             return
-        account_id = getattr(player, 'databaseID', None) or _account_id
+        account_id = _verified_account(getattr(player, 'databaseID', None) or _account_id)
         cache = getattr(player, 'battleResultsCache', None)
         _recovery.poll(cache, account_id)
+        if cache is None or not callable(getattr(cache, 'get', None)):
+            _notice_once('result_cache',
+                         'Optional cache recovery unavailable: result cache API missing')
+        else:
+            _notices.discard('result_cache')
     except Exception:
         _log('Optional cache recovery unavailable in this client state')
 
 
-def _delayed_recovery():
-    if _initialized:
+def _delayed_recovery(generation):
+    if _initialized and generation == _login_generation:
+        del _timer_ids[:]
         _try_recover()
 
 
+def _cancel_recovery_timers():
+    for timer in _timer_ids:
+        try:
+            BigWorld.cancelCallback(timer)
+        except Exception:
+            pass
+    del _timer_ids[:]
+
+
 def _on_account_become_player(*args, **kwargs):
-    global _account_id
+    global _account_id, _login_generation
     # A new login event must invalidate the previous account, even if the
     # current client's databaseID is temporarily unavailable.
     _account_id = None
+    _login_generation += 1
+    _cancel_recovery_timers()
     try:
         player = BigWorld.player()
         identifier = getattr(player, 'databaseID', None)
@@ -153,10 +188,18 @@ def _on_account_become_player(*args, **kwargs):
             _account_id = identifier
     except Exception:
         pass
+    if _verified_account(_account_id) is None:
+        _notice_once('account_identity', 'Account identity unavailable in current client state')
+    else:
+        _notices.discard('account_identity')
+    if _recovery is not None:
+        _recovery.reset_session(_account_id)
     _try_recover()
     if _recovery is not None:
         try:
-            _timer_ids.append(BigWorld.callback(20.0, _delayed_recovery))
+            generation = _login_generation
+            _timer_ids.append(BigWorld.callback(
+                20.0, lambda current=generation: _delayed_recovery(current)))
         except Exception:
             pass
 
@@ -167,10 +210,17 @@ def _on_hangar_space_create(*args, **kwargs):
         from gui import SystemMessages
         if _store is None:
             return
-        stats = summarize(_store.records)
-        message = u'TankSession: сохранено боёв: %d' % stats['battles']
-        if stats['win_rate'] is not None:
-            message += u', победы: %.1f%%' % stats['win_rate']
+        account = _verified_account(_context().get('account_id'))
+        if account is None:
+            message = u'TankSession: аккаунт ещё не определён; статистика не показана.'
+        else:
+            own = [record for record in _store.records
+                   if isinstance(record, dict) and
+                   _verified_account(record.get('account_id')) == account]
+            stats = summarize(own)
+            message = u'TankSession: боёв текущего аккаунта: %d' % stats['battles']
+            if stats['win_rate'] is not None:
+                message += u', победы: %.1f%%' % stats['win_rate']
         SystemMessages.pushMessage(
             text=message,
             type=SystemMessages.SM_TYPE.InformationHeader,
@@ -217,13 +267,20 @@ def init():
     global _initialized, _store, _pending, _recorder, _recovery, _hangar_space
     if _initialized:
         return
+    _notices.clear()
+    stage = 'locating game root'
     try:
-        _store = BattleStore(default_path())
-        _pending = PendingJournal(default_path() + '.pending.jsonl')
+        path = default_path()
+        stage = 'reading battle journal'
+        _store = BattleStore(path)
+        stage = 'reading pending journal'
+        _pending = PendingJournal(path + '.pending.jsonl')
         _recorder = ResultRecorder(_store, _pending, require_account=True)
+        stage = 'loading local settings'
         if _load_cache_opt_in():
             _recovery = CacheRecovery(_pending, _recorder, log=_log)
             _log('EXPERIMENTAL cache recovery enabled (unverified API)')
+        stage = 'subscribing required battle-result event'
         _attach_event('onBattleResultsReceived', _on_battle_results, required=True)
         _attach_event('onAvatarReady', _on_avatar_ready)
         _attach_event('onAccountBecomePlayer', _on_account_become_player)
@@ -236,21 +293,18 @@ def init():
             _hangar_space.onSpaceCreate += _on_hangar_space_create
         except Exception:
             _log('Hangar notification hook unavailable')
-    except Exception:
-        _error('Startup failed: ' + traceback.format_exc())
+    except Exception as error:
+        _error('Startup failed: %s (%s)' % (stage, type(error).__name__))
         fini()
 
 
 def fini():
     global _initialized, _store, _pending, _recorder, _recovery, _hangar_space, _account_id
+    global _login_generation
+    _login_generation += 1
     if _recovery is not None:
         _recovery.stop()
-    for timer in _timer_ids:
-        try:
-            BigWorld.cancelCallback(timer)
-        except Exception:
-            pass
-    del _timer_ids[:]
+    _cancel_recovery_timers()
     _detach_events()
     if _hangar_space is not None:
         try:
@@ -263,6 +317,7 @@ def fini():
     _pending = None
     _store = None
     _account_id = None
+    _notices.clear()
     was_initialized = _initialized
     _initialized = False
     if was_initialized:

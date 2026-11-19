@@ -18,34 +18,36 @@ from tanksession_analytics.storage import BattleStore
 
 
 def inspect(path):
-    """Count valid, malformed and deduplicated rows without modifying the file."""
+    """Read once; distinguish revisions, duplicates and genuinely invalid rows."""
     if os.path.islink(path):
         raise ValueError('Symlink journal is not supported')
     if not os.path.isfile(path):
         raise FileNotFoundError(path)
-    total, malformed = 0, 0
-    with open(path, 'rb') as f:
-        for line in f:
-            total += 1
-            try:
-                if len(line) > 262144 or not isinstance(json.loads(line.decode('utf-8')), dict):
-                    malformed += 1
-            except (UnicodeDecodeError, ValueError, TypeError):
-                malformed += 1
-    records = BattleStore(path).records
-    return {'lines': total, 'valid_unique': len(records),
-            'invalid_or_unusable': total - len(records),
-            'malformed': malformed,
-            'duplicates_or_missing_id': total - len(records) - malformed}
+    details = dict(BattleStore(path).diagnostics)
+    # Retain the old high-level key, but no longer label useful revisions or
+    # benign duplicates as invalid data.
+    details['invalid_or_unusable'] = details['malformed'] + details['invalid']
+    return details
+
+
+def _signature(stat):
+    return (stat.st_dev, stat.st_ino, stat.st_size,
+            stat.st_mtime_ns, stat.st_ctime_ns)
 
 
 def compact(path):
-    """Backup original + atomic replacement, only with an explicit user action."""
+    """Backup original + atomic replacement, only with an explicit user action.
+
+    This is an offline operation: the game and dashboard must be closed. The
+    signature checks detect ordinary concurrent modifications, but are not a
+    substitute for a transaction/lock shared with every writer.
+    """
     if os.path.islink(path) or not os.path.isfile(path):
         raise ValueError('Expected an existing regular non-symlink file')
     path = os.path.abspath(path)
     before = os.stat(path)
-    rows = BattleStore(path).records
+    store = BattleStore(path)
+    rows = store.records
     folder = os.path.dirname(path)
     fd, candidate = tempfile.mkstemp(prefix='.tanksession-', suffix='.tmp', dir=folder)
     try:
@@ -56,17 +58,22 @@ def compact(path):
             out.flush()
             os.fsync(out.fileno())
         current = os.stat(path)
-        if (current.st_size, current.st_mtime_ns) != (before.st_size, before.st_mtime_ns):
+        if _signature(current) != _signature(before):
             raise RuntimeError('Journal changed while compacting; original untouched')
         stamp = datetime.now().strftime('%Y%m%d-%H%M%S-%f')
         backup = path + '.backup-' + stamp
         # Exclusive backup creation prevents a previous backup being overwritten.
         with open(path, 'rb') as original, open(backup, 'xb') as saved:
+            if _signature(os.fstat(original.fileno())) != _signature(before):
+                raise RuntimeError('Journal changed before backup; original untouched')
             shutil.copyfileobj(original, saved)
             saved.flush()
             os.fsync(saved.fileno())
+        if _signature(os.stat(path)) != _signature(before):
+            raise RuntimeError('Journal changed during backup; original untouched')
         os.replace(candidate, path)
-        return {'backup': backup, 'records': len(rows), 'bytes': os.path.getsize(path)}
+        return {'backup': backup, 'records': len(rows), 'bytes': os.path.getsize(path),
+                'diagnostics_before': dict(store.diagnostics)}
     finally:
         if os.path.exists(candidate):
             os.unlink(candidate)

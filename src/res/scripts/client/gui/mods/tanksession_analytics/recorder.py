@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """The game-event / cache-result seam, testable without running the client."""
-from .core import _arena_id, _as_text, _get_first, normalize_result
+from .core import _arena_id, _as_text, _get_first, normalize_result, record_is_complete
 
 
 def _verified_account(value):
@@ -49,7 +49,12 @@ class ResultRecorder(object):
         result = normalize_result(payload, context=context, observed_at=observed_at)
         if result is None:
             return 'skipped', None
-        status = 'saved' if self.store.append(result) else 'duplicate'
-        if self.pending is not None:
-            self.pending.finish(result['arena_id'])
-        return status, result
+        status = self.store.upsert(result)
+        # Return what is actually persisted, including fields from an earlier
+        # partial result. A legacy local-vs-known duplicate has no exact-account
+        # snapshot and must not complete another account's pending entry.
+        stored = self.store.get_record(result)
+        if (self.pending is not None and status != 'conflict' and
+                record_is_complete(stored)):
+            self.pending.finish(stored['arena_id'])
+        return status, stored

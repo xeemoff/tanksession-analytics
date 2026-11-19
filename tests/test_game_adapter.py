@@ -41,6 +41,9 @@ class GameAdapterTests(unittest.TestCase):
         self.folder = tempfile.TemporaryDirectory()
         self.saved = dict(sys.modules)
         self.player = FakePlayer()
+        self.notes = []
+        self.errors = []
+        self.messages = []
         self.events = types.SimpleNamespace(
             onBattleResultsReceived=Event(), onAvatarReady=Event(),
             onAccountBecomePlayer=Event())
@@ -56,8 +59,8 @@ class GameAdapterTests(unittest.TestCase):
         events = types.ModuleType('PlayerEvents')
         events.g_playerEvents = self.events
         debug = types.ModuleType('debug_utils')
-        debug.LOG_NOTE = lambda message: None
-        debug.LOG_ERROR = lambda message: None
+        debug.LOG_NOTE = self.notes.append
+        debug.LOG_ERROR = self.errors.append
 
         # The actual client uses gui.mods.tanksession_analytics, while local
         # source tests import tanksession_analytics directly. Alias ONLY within
@@ -65,6 +68,9 @@ class GameAdapterTests(unittest.TestCase):
         package = importlib.import_module('tanksession_analytics')
         gui = types.ModuleType('gui')
         gui.__path__ = []
+        gui.SystemMessages = types.SimpleNamespace(
+            SM_TYPE=types.SimpleNamespace(InformationHeader='information'),
+            pushMessage=lambda **message: self.messages.append(message))
         mods = types.ModuleType('gui.mods')
         mods.__path__ = []
         sys.modules.update({
@@ -143,6 +149,99 @@ class GameAdapterTests(unittest.TestCase):
         self.assertFalse(self.game._initialized)
         self.assertIsNone(self.game._recorder)
         self.assertEqual(self.game._hooks, [])
+        self.assertTrue(any('subscribing required battle-result event' in item
+                            for item in self.errors))
+
+    def test_hangar_summary_only_includes_current_account(self):
+        self.game.init()
+        self.game._store.append({'arena_id': '1', 'account_id': '88',
+                                 'timestamp': 1700000000, 'outcome': 'win'})
+        self.game._store.append({'arena_id': '2', 'account_id': '99',
+                                 'timestamp': 1700000001, 'outcome': 'loss'})
+        self.game._on_hangar_space_create()
+        message = self.messages[-1]['text']
+        self.assertIn('боёв текущего аккаунта: 1', message)
+        self.assertIn('100.0%', message)
+        self.assertNotIn('50.0%', message)
+
+    def test_hangar_summary_explains_unknown_account(self):
+        self.game.init()
+        self.player.databaseID = None
+        self.game._on_account_become_player()
+        self.game._on_hangar_space_create()
+        self.assertIn('аккаунт ещё не определён', self.messages[-1]['text'])
+        self.assertNotIn('победы:', self.messages[-1]['text'])
+
+    def test_replay_capability_failure_is_explained_without_log_flooding(self):
+        self.game.init()
+
+        def unavailable():
+            raise AttributeError('unsupported client API')
+
+        sys.modules['BattleReplay'].isPlaying = unavailable
+        self.assertTrue(self.game._is_replay())
+        self.assertTrue(self.game._is_replay())
+        notices = lambda: [item for item in self.notes
+                           if 'Collection paused: replay status unavailable' in item]
+        self.assertEqual(len(notices()), 1)
+        sys.modules['BattleReplay'].isPlaying = lambda: False
+        self.assertFalse(self.game._is_replay())
+        sys.modules['BattleReplay'].isPlaying = unavailable
+        self.assertTrue(self.game._is_replay())
+        self.assertEqual(len(notices()), 2)
+
+    def test_startup_reports_root_failure_without_exception_payload(self):
+        def unavailable():
+            raise IOError('C:/Users/private-user/game')
+
+        self.game.default_path = unavailable
+        self.game.init()
+        self.assertFalse(self.game._initialized)
+        self.assertTrue(any('Startup failed: locating game root' in item
+                            for item in self.errors))
+        self.assertFalse(any('private-user' in item for item in self.errors))
+
+    def test_new_login_invalidates_pending_cache_callbacks(self):
+        self.game._load_cache_opt_in = lambda: True
+        requests = []
+        self.player.battleResultsCache = types.SimpleNamespace(
+            get=lambda arena, callback: requests.append((arena, callback)))
+        self.game.init()
+        self.game._on_account_become_player()
+        self.game._on_avatar_ready()
+        self.game._try_recover()
+        self.assertEqual(len(requests), 1)
+        self.player.databaseID = 99
+        self.game._on_account_become_player()
+        payload = {'arenaUniqueID': 1234, 'common': {'winnerTeam': 1},
+                   'personal': {42: {'team': 1, 'damageDealt': 1111, 'xp': 400}}}
+        requests[0][1](0, payload)
+        self.assertEqual(self.game._store.records, [])
+        self.assertIn('1234', self.game._pending.pending)
+
+    def test_delayed_recovery_timer_belongs_to_one_login(self):
+        self.game._load_cache_opt_in = lambda: True
+        callbacks, cancelled = [], []
+
+        def schedule(delay, callback):
+            callbacks.append(callback)
+            return len(callbacks)
+
+        sys.modules['BigWorld'].callback = schedule
+        sys.modules['BigWorld'].cancelCallback = cancelled.append
+        self.game.init()
+        self.game._on_account_become_player()
+        self.game._on_account_become_player()
+        self.assertEqual(cancelled, [1])
+        self.assertEqual(self.game._timer_ids, [2])
+        # Cancellation may race with callback delivery: the generation guard
+        # must preserve the replacement timer and avoid running stale work.
+        callbacks[0]()
+        self.assertEqual(self.game._timer_ids, [2])
+        callbacks[1]()
+        self.assertEqual(self.game._timer_ids, [])
+        self.game.fini()
+        self.assertEqual(cancelled, [1])
 
 
 if __name__ == '__main__':

@@ -11,6 +11,11 @@ CATEGORIES = (
     ('Staged own battle', 'battle_staged'),
     ('Saved battle:', 'battle_saved'),
     ('Recovered battle:', 'battle_recovered'),
+    ('Updated battle:', 'battle_updated'),
+    ('Duplicate battle result', 'battle_duplicate'),
+    ('Battle result conflict:', 'battle_conflict'),
+    ('Collection paused: replay status unavailable', 'replay_api_unavailable'),
+    ('Account identity unavailable', 'identity_unavailable'),
     ('Skipped incomplete/ambiguous', 'result_skipped'),
     ('Skipped battle due to account identity: identity_missing', 'identity_missing'),
     ('Skipped battle due to account identity: account_mismatch', 'account_mismatch'),
@@ -21,6 +26,8 @@ CATEGORIES = (
     ('Hangar notification hook unavailable', 'hangar_hook_missing'),
     ('Optional cache recovery unavailable', 'cache_unavailable'),
     ('Result cache request unsupported', 'cache_request_error'),
+    ('Cache result rejected', 'cache_result_rejected'),
+    ('Cache result ID mismatch', 'cache_arena_mismatch'),
 )
 
 
