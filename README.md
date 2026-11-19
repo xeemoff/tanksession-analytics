@@ -2,7 +2,7 @@
 
 **Версия 0.4.0-rc4 · неофициальный проект · открытый исходный код (MIT)**
 
-![Проверки](https://github.com/xeemoff/tanksession-analytics/actions/workflows/tests.yml/badge.svg?branch=feature%2Fv0.4.0-rc1-client-validation)
+![Проверки](https://github.com/xeemoff/tanksession-analytics/actions/workflows/tests.yml/badge.svg?branch=main)
 
 TankSession Analytics сохраняет результаты собственных боёв в локальный журнал: сравнивает периоды, показывает динамику урона и цели по технике. В rc4 добавлен интерфейс на **React и TypeScript** с экспериментальным адаптером **Gameface для ангара** и отдельным браузерным просмотром. Расчёты и хранение остаются на Python; прежняя панель с экспортом CSV также доступна.
 
