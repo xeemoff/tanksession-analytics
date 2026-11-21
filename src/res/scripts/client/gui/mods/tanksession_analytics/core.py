@@ -152,28 +152,65 @@ def _validate_record(record):
     return clean
 
 
-def _find_personal(results, player_vehicle_id, allow_singleton=False):
-    """Only accept an unambiguously matching personal entry.
+def _find_personal(results, player_vehicle_id, allow_singleton=False,
+                   account_id=None):
+    """Select only an unambiguously OWN personal entry.
 
-    A *provided* key that does not match does not silently fall back unless
-    the caller independently confirmed this is the player's own result.
+    Game builds may index the own entry by account ID rather than Avatar
+    vehicle ID; 'avatar' may coexist as an unrelated metadata entry. Never
+    select a random participant when multiple candidate entries remain.
     """
     personal = results.get('personal')
     if not isinstance(personal, dict):
         return None
     if any(key in personal for key in ('damageDealt', 'xp', 'credits', 'vehicleType')):
         return personal  # Already flattened player-only result.
-    if player_vehicle_id is not None:
+
+    matches = []
+    for identifier in (account_id, player_vehicle_id):
+        if identifier is None:
+            continue
         for key, item in personal.items():
-            if _as_text(key) == _as_text(player_vehicle_id) and isinstance(item, dict):
-                return item
-        if not allow_singleton:
-            return None
-    if len(personal) == 1:
-        only = next(iter(personal.values()))
-        if isinstance(only, dict):
-            return only
+            if (_as_text(key) == _as_text(identifier) and
+                    isinstance(item, dict) and
+                    not any(item is old for old in matches)):
+                matches.append(item)
+    if len(matches) > 1:
+        return None
+    if matches:
+        return matches[0]
+
+    # A confirmed-own client event can have exactly one per-player entry plus
+    # the separately keyed avatar metadata. Without confirmation, keep the
+    # old exact-singleton behavior; neither path selects 'avatar' itself.
+    candidates = [item for key, item in personal.items()
+                  if _as_text(key) != 'avatar' and isinstance(item, dict)]
+    if len(candidates) == 1 and (allow_singleton or
+                                 (account_id is None and
+                                  player_vehicle_id is None and
+                                  len(personal) == 1)):
+        return candidates[0]
     return None
+
+
+def result_rejection_reason(results, context=None):
+    """Return a fixed category only: no account IDs, names or raw payloads."""
+    if not isinstance(results, dict):
+        return 'payload_not_mapping'
+    common = results.get('common')
+    if _arena_id(_get_first(results, ('arenaUniqueID', 'arenaId'))) is None:
+        if _arena_id(_get_first(common, ('arenaUniqueID', 'arenaId'))) is None:
+            return 'arena_id_unavailable'
+    if not isinstance(results.get('personal'), dict):
+        return 'personal_map_unavailable'
+    context = context if isinstance(context, dict) else {}
+    match = _find_personal(results,
+                           context.get('player_vehicle_id'),
+                           context.get('confirmed_own_result') is True,
+                           context.get('account_id'))
+    if match is None:
+        return 'own_personal_entry_unavailable'
+    return 'record_validation_failed'
 
 
 def normalize_result(results, context=None, observed_at=None):
@@ -197,7 +234,8 @@ def normalize_result(results, context=None, observed_at=None):
         return None
 
     personal = _find_personal(results, context.get('player_vehicle_id'),
-                              context.get('confirmed_own_result') is True)
+                              context.get('confirmed_own_result') is True,
+                              context.get('account_id'))
     if personal is None:
         return None
     account = context.get('account_id')

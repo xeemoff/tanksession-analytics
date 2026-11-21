@@ -14,7 +14,7 @@ import BattleReplay
 from PlayerEvents import g_playerEvents
 from debug_utils import LOG_NOTE, LOG_ERROR
 
-from gui.mods.tanksession_analytics.core import summarize
+from gui.mods.tanksession_analytics.core import summarize, result_rejection_reason
 from gui.mods.tanksession_analytics.storage import BattleStore, PendingJournal, default_path
 from gui.mods.tanksession_analytics.recorder import ResultRecorder, _verified_account
 from gui.mods.tanksession_analytics.recovery import CacheRecovery
@@ -50,6 +50,45 @@ def _notice_once(key, message):
         _log(message)
 
 
+def _live_account_identity(player):
+    """Return (verified account ID, conflict), never a temporary entity ID.
+
+    Alternate client accessors are probes: availability in a particular
+    Mir Tankov release must be established by an actual in-game test.
+    """
+    if player is None:
+        return None, False
+    candidates = []
+    try:
+        direct = _verified_account(getattr(player, 'databaseID', None))
+        if direct is not None:
+            candidates.append(direct)
+    except Exception:
+        pass
+    try:
+        from gui.shared.utils import getPlayerDatabaseID
+        helper = _verified_account(getPlayerDatabaseID())
+        if helper is not None:
+            candidates.append(helper)
+    except Exception:
+        pass
+    if not candidates:
+        try:
+            from helpers import dependency
+            from skeletons.gui.shared import IItemsCache
+            dossier = dependency.instance(IItemsCache).items.getAccountDossier()
+            fallback = _verified_account(dossier.getPlayerDBID())
+            if fallback is not None:
+                candidates.append(fallback)
+        except Exception:
+            pass
+    if len(set(candidates)) > 1:
+        _notice_once('account_conflict',
+                     'Account identity sources disagree; collection paused')
+        return None, True
+    return (candidates[0] if candidates else None), False
+
+
 def _context():
     context = {}
     try:
@@ -57,11 +96,16 @@ def _context():
         if player is None:
             # No active client entity: never reuse an old cached account.
             return context
-        if _account_id is not None:
-            context['account_id'] = _account_id
-        account_id = getattr(player, 'databaseID', None)
-        if account_id:
-            context['account_id'] = account_id
+        live, conflict = _live_account_identity(player)
+        cached = _verified_account(_account_id)
+        if not conflict and live is not None and cached is not None and live != cached:
+            _notice_once('account_conflict',
+                         'Account identity changed unexpectedly; collection paused')
+            conflict = True
+        if not conflict:
+            account = live or cached
+            if account is not None:
+                context['account_id'] = account
         vehicle_id = getattr(player, 'playerVehicleID', None)
         if vehicle_id is not None:
             context['player_vehicle_id'] = vehicle_id
@@ -136,7 +180,9 @@ def _on_battle_results(is_player_vehicle, results):
         elif status == 'duplicate':
             _log('Duplicate battle result; existing record unchanged')
         elif status == 'skipped':
-            _log('Skipped incomplete/ambiguous battle result')
+            reason = result_rejection_reason(results, dict(_context(),
+                                                            confirmed_own_result=True))
+            _log('Skipped incomplete/ambiguous battle result: ' + reason)
         elif status in ('identity_missing', 'account_mismatch'):
             _log('Skipped battle due to account identity: ' + status)
         if status in ('saved', 'updated') and _gameface is not None:
@@ -152,7 +198,7 @@ def _try_recover():
         player = BigWorld.player()
         if player is None:
             return
-        account_id = _verified_account(getattr(player, 'databaseID', None) or _account_id)
+        account_id = _verified_account(_context().get('account_id'))
         cache = getattr(player, 'battleResultsCache', None)
         _recovery.poll(cache, account_id)
         if cache is None or not callable(getattr(cache, 'get', None)):
@@ -189,9 +235,10 @@ def _on_account_become_player(*args, **kwargs):
     _cancel_recovery_timers()
     try:
         player = BigWorld.player()
-        identifier = getattr(player, 'databaseID', None)
-        if identifier:
-            _account_id = identifier
+        identifier, conflict = _live_account_identity(player)
+        if not conflict and identifier is not None:
+            direct = getattr(player, 'databaseID', None)
+            _account_id = direct if _verified_account(direct) == identifier else identifier
     except Exception:
         pass
     if _verified_account(_account_id) is None:
@@ -211,8 +258,19 @@ def _on_account_become_player(*args, **kwargs):
 
 
 def _on_hangar_space_create(*args, **kwargs):
-    global _in_hangar
+    global _in_hangar, _account_id
     _in_hangar = bool(_initialized)
+    # Login hooks may fire before the account database ID is ready. A later
+    # hangar event has a confirmed Account entity; remember its DB ID so the
+    # battle Avatar can retain ownership even if it lacks databaseID itself.
+    try:
+        fresh_account, conflict = _live_account_identity(BigWorld.player())
+        if not conflict and fresh_account is not None:
+            if _verified_account(_account_id) != fresh_account:
+                _account_id = fresh_account
+                _log('Own account identity confirmed in hangar')
+    except Exception:
+        pass
     if _gameface is not None:
         _gameface.on_hangar()
     _try_recover()
@@ -282,7 +340,8 @@ def _ui_account():
         if (getattr(player, 'arenaUniqueID', None) not in (None, 0) or
                 getattr(player, 'arena', None) is not None):
             return None
-        return _verified_account(getattr(player, 'databaseID', None))
+        account, conflict = _live_account_identity(player)
+        return None if conflict else account
     except Exception:
         return None
 
