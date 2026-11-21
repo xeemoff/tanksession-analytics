@@ -172,6 +172,9 @@ def runtime_suite():
             snapshot = build_snapshot(rows, '101', request=request, now=1700000999)
             self.assertEqual(snapshot['summary']['battles'], 20)
             self.assertEqual(snapshot['comparison']['damage_delta'], 0.0)
+            self.assertEqual(snapshot['coach']['status'], 'ready')
+            self.assertEqual(snapshot['coach']['comparison']['median_delta'], 0.0)
+            self.assertFalse(snapshot['coach']['records']['new_damage_record'])
             self.assertEqual(snapshot['request_id'], 'py27')
             self.assertEqual(len(snapshot['history']), 12)
             self.assertEqual([item['name'] for item in snapshot['vehicles']], [u'ИС-7'])
@@ -182,6 +185,8 @@ def runtime_suite():
             hidden = build_snapshot(rows, None, now=1700000999)
             self.assertEqual(hidden['status'], 'account_unavailable')
             self.assertEqual(hidden['history'], [])
+            self.assertEqual(hidden['coach']['battles'], 0)
+            self.assertIsNone(hidden['coach']['records']['best_damage'])
 
     return unittest.defaultTestLoader.loadTestsFromTestCase(Python2RuntimeTests)
 

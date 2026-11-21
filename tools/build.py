@@ -29,7 +29,7 @@ MAX_MEMBER_BYTES = 2 * 1024 * 1024
 # An explicit release manifest also detects an accidentally omitted dependency.
 REQUIRED_MODULES = frozenset([ENTRY] + [
     GAME_ROOT + 'tanksession_analytics/' + name + '.pyc'
-    for name in ('__init__', 'analytics', 'core', 'game', 'gameface', 'goals',
+    for name in ('__init__', 'analytics', 'coach', 'core', 'game', 'gameface', 'goals',
                  'presentation', 'recorder', 'recovery', 'storage')
 ])
 UI_ROOT = 'res/gui/gameface/mods/tanksession/'

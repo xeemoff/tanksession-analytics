@@ -10,6 +10,7 @@ import re
 import time
 
 from .analytics import rolling_damage, sort_records, vehicle_table, window_comparison
+from .coach import build_coach
 from .core import _as_text, long_type, record_is_complete, summarize, validate_record
 from .goals import evaluate_goals, validate_goals
 from .recorder import _verified_account
@@ -104,6 +105,8 @@ def _empty_snapshot(request, source, now, status):
         'selection': {'vehicle': request['vehicle'], 'window': request['window']},
         'vehicles': [], 'summary': summarize([]),
         'comparison': window_comparison([], request['window']),
+        'coach': build_coach([], '' if status == 'account_unavailable' else request['vehicle'],
+                             request['window']),
         'series': [], 'goals': [], 'history': [],
         'quality': {'total_records': 0, 'incomplete_records': 0,
                     'invalid_records': 0, 'conflicts': 0},
@@ -192,6 +195,7 @@ def build_snapshot(records, account_id, request=None, goals=None, diagnostics=No
         'vehicles': vehicles,
         'summary': summarize(selected),
         'comparison': window_comparison(comparison_rows, request['window']),
+        'coach': build_coach(selected, request['vehicle'], request['window']),
         'series': [{'battle': battle + trend_offset, 'avg_damage': average, 'known_damage': known}
                    for battle, average, known in rolling_damage(
                        trend_rows, request['window'], max_points=MAX_SERIES)],

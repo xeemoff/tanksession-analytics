@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createBridge } from './bridge';
 import { getMode, Goal, Mode, Selection, Snapshot, WindowSize } from './contracts';
 import { SnapshotController, ViewState } from './controller';
+import { CoachCard } from './Coach';
 
 export function formatNumber(value: number | null, digits = 0): string {
   if (value === null || !Number.isFinite(value)) return '—';
@@ -141,7 +142,7 @@ function BattleHistory({ history }: { history: Snapshot['history'] }) {
   return <section className="history-section">
     <div className="section-heading"><h2>Последние бои</h2><span className="small muted">До 12 последних результатов</span></div>
     <div role="table" aria-label="Последние бои" className="history-table">
-      <div role="row" className="history-row history-head"><span role="columnheader" className="col-time">Получен результат</span><span role="columnheader" className="col-vehicle">Техника</span><span role="columnheader" className="col-result">Исход</span><span role="columnheader" className="col-damage">Урон</span><span role="columnheader" className="col-xp">Опыт</span></div>
+      <div role="row" className="history-row history-head"><span role="columnheader" className="col-time">Получен результат</span><span role="columnheader" className="col-vehicle">Техника</span><span role="columnheader" className="col-result">Исход</span><span role="columnheader" className="col-damage">Урон</span><span role="columnheader" className="col-xp" title="Значение из результата может учитывать бонусы; в разборе прогресса не используется.">Опыт из результата</span></div>
       <div className="history-scroll">
         {history.map((battle, index) => <div role="row" className="history-row" key={battle.timestamp + ':' + index}>
           <span role="cell" className="col-time muted">{timeLabel(battle.timestamp)}</span>
@@ -155,7 +156,7 @@ function BattleHistory({ history }: { history: Snapshot['history'] }) {
   </section>;
 }
 
-export function SnapshotView({ snapshot }: { snapshot: Snapshot }) {
+export function SnapshotView({ snapshot, onSelectVehicle }: { snapshot: Snapshot; onSelectVehicle?: (vehicle: string) => void }) {
   if (snapshot.status === 'account_unavailable') return <div className="empty-state" role="status"><span className="large-symbol">◎</span><h2>Аккаунт ещё не определён</h2><p>Данные появятся после входа в ангар. История других аккаунтов здесь не отображается.</p></div>;
   if (snapshot.status === 'empty') return <div className="empty-state" role="status"><span className="large-symbol">＋</span><h2>В этой выборке ещё нет боёв</h2><p>Завершите бой или выберите другую технику. История обновляется по полученным результатам.</p></div>;
   const summary = snapshot.summary;
@@ -167,9 +168,12 @@ export function SnapshotView({ snapshot }: { snapshot: Snapshot }) {
         detail={summary.wins + ' побед · ' + summary.known_outcomes + ' известных исходов'} testId="win-rate" />
       <Metric label="СРЕДНИЙ УРОН" value={formatNumber(summary.avg_damage)} detail={'Известен в ' + summary.damage_samples + ' из ' + summary.battles + ' боёв'} emphasis testId="average-damage" />
     </div>
+    {snapshot.coach && <CoachCard coach={snapshot.coach} latestVehicle={snapshot.history[0]?.vehicle} onSelectVehicle={onSelectVehicle} />}
     <div className="analysis-row">
       <section className="trend-card"><div className="section-heading"><h2>Динамика урона</h2><span className="subtle-tag">ОКНО {snapshot.selection.window}</span></div>
-        <Trend series={snapshot.series} windowSize={snapshot.selection.window} /><Comparison snapshot={snapshot} /></section>
+        <Trend series={snapshot.series} windowSize={snapshot.selection.window} />{snapshot.coach
+          ? <p className="trend-note">Скользящее среднее: для точки нужен известный урон минимум в 70% боёв окна.</p>
+          : <Comparison snapshot={snapshot} />}</section>
       <GoalCard goals={snapshot.goals} selected={snapshot.selection.vehicle} />
     </div>
     <BattleHistory history={snapshot.history} />
@@ -220,7 +224,7 @@ export default function App() {
         {([10, 30, 100] as WindowSize[]).map(size => <button key={size} type="button" aria-label={size + ' боёв'} aria-pressed={state.selection.window === size} disabled={inactive}
           className={state.selection.window === size ? 'active' : ''} onClick={() => choose({ ...state.selection, window: size })}>{size}<span>боёв</span></button>)}
       </div></div><span className="local-note"><span className="status-dot" />Данные на вашем компьютере</span></div>
-      {state.phase === 'ready' && state.snapshot ? <SnapshotView snapshot={state.snapshot} /> : state.phase === 'error' ? <div className="empty-state error-state" role="alert">
+      {state.phase === 'ready' && state.snapshot ? <SnapshotView snapshot={state.snapshot} onSelectVehicle={vehicle => choose({ ...state.selection, vehicle })} /> : state.phase === 'error' ? <div className="empty-state error-state" role="alert">
         <span className="large-symbol">!</span><h2>Данные сейчас недоступны</h2><p>{state.message}</p><button className="primary-button" type="button" onClick={() => setGeneration(generation + 1)}>Повторить подключение</button>
       </div> : <div className="empty-state loading-state" role="status"><span className="loading-bar" /><h2>{state.phase === 'connecting' ? 'Подключаем панель' : 'Обновляем статистику'}</h2><p>Показатели появятся после получения данных.</p></div>}
     </div>

@@ -21,7 +21,7 @@ def build_preview():
     ]
     package = 'src/res/scripts/client/gui/mods/tanksession_analytics/'
     paths.extend(package + name + '.py' for name in (
-        '__init__', 'analytics', 'core', 'goals', 'presentation',
+        '__init__', 'analytics', 'coach', 'core', 'goals', 'presentation',
         'recorder', 'storage'))
     files = {path: (ROOT / path).read_bytes() for path in paths}
     files['PREVIEW_RU.txt'] = (

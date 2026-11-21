@@ -50,6 +50,9 @@ class PresentationTests(unittest.TestCase):
         self.assertEqual(result['summary']['avg_damage'], 1200)
         self.assertEqual(result['vehicles'], [{'name': 'IS-7', 'battles': 20}])
         self.assertEqual(len(result['goals']), 1)
+        self.assertEqual(result['coach']['vehicle'], 'IS-7')
+        self.assertEqual(result['coach']['battles'], 20)
+        self.assertEqual(result['coach']['records']['best_damage'], 1200)
         rendered = json.dumps(result, allow_nan=False)
         for secret in ('private-owner-account', 'private-foreign-account',
                        'private-arena', 'Foreign tank', 'account_id', 'arena_id'):
@@ -66,6 +69,11 @@ class PresentationTests(unittest.TestCase):
             for key in ('vehicles', 'goals', 'history', 'series'):
                 self.assertEqual(result[key], [])
             self.assertFalse(any(result['quality'].values()))
+            self.assertEqual(result['coach']['status'], 'empty')
+            self.assertEqual(result['coach']['vehicle'], '')
+            self.assertEqual(result['coach']['battles'], 0)
+            self.assertIsNone(result['coach']['comparison'])
+            self.assertIsNone(result['coach']['records']['best_damage'])
 
     def test_numeric_identity_uses_the_same_canonical_record_account(self):
         result = build_snapshot([battle(1, account=123), battle(2, account='123')], 123,
@@ -96,6 +104,9 @@ class PresentationTests(unittest.TestCase):
         self.assertEqual(len(result['goals']), 1)
         self.assertTrue(all(row['vehicle'] == 'IS-7' for row in result['history']))
         self.assertTrue(all(row['avg_damage'] == 1200 for row in result['series']))
+        self.assertEqual(result['coach']['vehicle'], 'IS-7')
+        self.assertEqual(result['coach']['battles'], 20)
+        self.assertEqual(result['coach']['records']['best_damage'], 1200)
 
     def test_comparison_requires_two_full_windows(self):
         rows = [battle(i, damage=1000, outcome='loss') for i in range(10)]
@@ -195,6 +206,39 @@ class PresentationTests(unittest.TestCase):
         rows = [battle(i, vehicle='A' if i % 2 else 'B') for i in range(50)]
         self.assertEqual(build_snapshot(rows, 'own', now=1701000000),
                          build_snapshot(reversed(rows), 'own', now=1701000000))
+
+    def test_coach_sorts_chronology_before_selecting_the_two_periods(self):
+        rows = [battle(i, damage=1000 if i < 10 else 2000) for i in range(20)]
+        result = build_snapshot(reversed(rows), 'own', now=1701000000)
+        self.assertEqual(result['coach']['status'], 'ready')
+        self.assertEqual(result['coach']['comparison']['delta'], 1000)
+        self.assertEqual(result['coach']['coverage']['previous_damage'], 10)
+
+    def test_coach_does_not_mix_vehicles_or_accounts_even_with_same_labels(self):
+        rows = [battle(i, damage=1000) for i in range(20)]
+        rows += [battle(20, vehicle='Other', damage=9000)]
+        rows += [battle(21, account='foreign', damage=10000)]
+        all_tanks = build_snapshot(rows, 'own', now=1701000000)['coach']
+        self.assertEqual(all_tanks['status'], 'choose_vehicle')
+        self.assertIsNone(all_tanks['comparison'])
+        selected = build_snapshot(rows, 'own', request('IS-7'), now=1701000000)['coach']
+        self.assertEqual(selected['status'], 'ready')
+        self.assertEqual(selected['battles'], 20)
+        self.assertEqual(selected['records']['best_damage'], 1000)
+
+    def test_coach_keeps_unknown_measurements_in_their_original_window(self):
+        rows = [battle(i, damage=None if i == 19 else 1000) for i in range(20)]
+        coach = build_snapshot(rows, 'own', now=1701000000)['coach']
+        self.assertEqual(coach['status'], 'incomplete')
+        self.assertEqual(coach['coverage']['current_battles'], 10)
+        self.assertEqual(coach['coverage']['current_damage'], 9)
+        self.assertIsNone(coach['comparison'])
+
+    def test_coach_uses_stored_mode_to_avoid_mixed_type_progress(self):
+        rows = [dict(battle(i), mode='1' if i < 10 else '7') for i in range(20)]
+        coach = build_snapshot(rows, 'own', now=1701000000)['coach']
+        self.assertEqual(coach['status'], 'mixed_modes')
+        self.assertIsNone(coach['comparison'])
 
 
 if __name__ == '__main__':
