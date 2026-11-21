@@ -20,6 +20,64 @@ class NormalizeTests(unittest.TestCase):
         self.assertEqual(record['xp'], 900)
         self.assertIsNone(record['assistance_radio'])
 
+
+    def test_matches_personal_by_own_account_id_with_avatar_metadata(self):
+        raw = {'arenaUniqueID': 188, 'common': {'winnerTeam': 1},
+               'personal': {'avatar': {'inappropriateKey': 'ignored'},
+                            777: {'team': 1, 'damageDealt': 837, 'xp': 500}}}
+        record = normalize_result(raw, {'account_id': '777',
+                                         'player_vehicle_id': 42,
+                                         'confirmed_own_result': True})
+        self.assertEqual(record['arena_id'], '188')
+        self.assertEqual(record['outcome'], 'win')
+        self.assertEqual(record['damage'], 837)
+        self.assertEqual(record['xp'], 500)
+
+    def test_confirmed_own_single_nonavatar_without_id_match(self):
+        raw = {'arenaUniqueID': 190,
+               'personal': {'avatar': {'some_data': 'not a player'},
+                            556: {'damageDealt': 5, 'xp': 9}}}
+        self.assertIsNone(normalize_result(raw, {'account_id': '777',
+                                                 'player_vehicle_id': 42}))
+        record = normalize_result(raw, {'account_id': '777',
+                                         'player_vehicle_id': 42,
+                                         'confirmed_own_result': True})
+        self.assertEqual(record['damage'], 5)
+
+    def test_never_choose_random_player_when_multiple_remain(self):
+        raw = {'arenaUniqueID': 191,
+               'personal': {'avatar': {'state': 1},
+                            556: {'damageDealt': 100},
+                            558: {'damageDealt': 200}}}
+        self.assertIsNone(normalize_result(raw, {'account_id': '777',
+                                                 'confirmed_own_result': True}))
+        raw['personal'][777] = {'damageDealt': 999}
+        own = normalize_result(raw, {'account_id': '777',
+                                     'confirmed_own_result': True})
+        self.assertEqual(own['damage'], 999)
+
+    def test_conflicting_account_and_vehicle_matches_are_rejected(self):
+        raw = {'arenaUniqueID': 192,
+               'personal': {888: {'damageDealt': 800},
+                            44: {'damageDealt': 400}}}
+        self.assertIsNone(normalize_result(raw, {'account_id': '888',
+                                                 'player_vehicle_id': 44,
+                                                 'confirmed_own_result': True}))
+
+    def test_avatar_only_does_not_generate_a_battle(self):
+        raw = {'arenaUniqueID': 193,
+               'personal': {'avatar': {'xp': 100}}}
+        self.assertIsNone(normalize_result(raw, {'account_id': '777',
+                                                 'confirmed_own_result': True}))
+
+    def test_rejection_reason_uses_fixed_non_identifying_categories(self):
+        from tanksession_analytics.core import result_rejection_reason
+        self.assertEqual(result_rejection_reason({'arenaUniqueID': 1, 'personal': {'avatar': {}}},
+                                                {'account_id': 'SENSITIVE'}),
+                         'own_personal_entry_unavailable')
+        self.assertEqual(result_rejection_reason({'personal': {}}), 'arena_id_unavailable')
+        self.assertEqual(result_rejection_reason({'arenaId': 5}), 'personal_map_unavailable')
+
     def test_draw(self):
         raw = {'arenaUniqueID': 124, 'common': {'winnerTeam': 0}, 'personal': {1: {'team': 2}}}
         self.assertEqual(normalize_result(raw)['outcome'], 'draw')

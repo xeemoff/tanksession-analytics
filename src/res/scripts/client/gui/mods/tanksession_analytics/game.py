@@ -14,7 +14,7 @@ import BattleReplay
 from PlayerEvents import g_playerEvents
 from debug_utils import LOG_NOTE, LOG_ERROR
 
-from gui.mods.tanksession_analytics.core import summarize
+from gui.mods.tanksession_analytics.core import summarize, result_rejection_reason
 from gui.mods.tanksession_analytics.storage import BattleStore, PendingJournal, default_path
 from gui.mods.tanksession_analytics.recorder import ResultRecorder, _verified_account
 from gui.mods.tanksession_analytics.recovery import CacheRecovery
@@ -180,7 +180,9 @@ def _on_battle_results(is_player_vehicle, results):
         elif status == 'duplicate':
             _log('Duplicate battle result; existing record unchanged')
         elif status == 'skipped':
-            _log('Skipped incomplete/ambiguous battle result')
+            reason = result_rejection_reason(results, dict(_context(),
+                                                            confirmed_own_result=True))
+            _log('Skipped incomplete/ambiguous battle result: ' + reason)
         elif status in ('identity_missing', 'account_mismatch'):
             _log('Skipped battle due to account identity: ' + status)
         if status in ('saved', 'updated') and _gameface is not None:
