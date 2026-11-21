@@ -118,6 +118,29 @@ class GameAdapterTests(unittest.TestCase):
         self.assertEqual(len(self.events.onAccountBecomePlayer.handlers), 0)
 
 
+
+    def test_hangar_identity_is_retained_for_battle_avatar(self):
+        self.player.databaseID = None
+        self.game.init()
+        self.events.onAccountBecomePlayer.fire()
+        self.assertIsNone(self.game._account_id)
+        # Account DB ID arrives only after the account login event, in hangar.
+        self.player.databaseID = 88
+        self.game._on_hangar_space_create()
+        self.assertEqual(self.game._account_id, '88')
+        # In battle the Avatar has no databaseID, unlike the hangar Account.
+        self.player.databaseID = None
+        self.events.onAvatarReady.fire()
+        self.assertEqual(self.game._pending.context(1234)['account_id'], '88')
+        self.player.arenaUniqueID = None
+        self.events.onBattleResultsReceived.fire(True, {
+            'arenaUniqueID': 1234, 'common': {'winnerTeam': 1},
+            'personal': {42: {'team': 1, 'damageDealt': 800, 'xp': 250}},
+        })
+        self.assertEqual(len(self.game._store.records), 1)
+        self.assertEqual(self.game._store.records[0]['account_id'], '88')
+        self.assertTrue(any('confirmed in hangar' in line for line in self.notes))
+
     def test_client_utility_supplies_account_when_player_attribute_is_missing(self):
         shared = types.ModuleType('gui.shared')
         utils = types.ModuleType('gui.shared.utils')

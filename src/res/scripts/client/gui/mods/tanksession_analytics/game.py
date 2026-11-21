@@ -256,8 +256,19 @@ def _on_account_become_player(*args, **kwargs):
 
 
 def _on_hangar_space_create(*args, **kwargs):
-    global _in_hangar
+    global _in_hangar, _account_id
     _in_hangar = bool(_initialized)
+    # Login hooks may fire before the account database ID is ready. A later
+    # hangar event has a confirmed Account entity; remember its DB ID so the
+    # battle Avatar can retain ownership even if it lacks databaseID itself.
+    try:
+        fresh_account, conflict = _live_account_identity(BigWorld.player())
+        if not conflict and fresh_account is not None:
+            if _verified_account(_account_id) != fresh_account:
+                _account_id = fresh_account
+                _log('Own account identity confirmed in hangar')
+    except Exception:
+        pass
     if _gameface is not None:
         _gameface.on_hangar()
     _try_recover()
