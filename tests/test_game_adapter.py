@@ -117,6 +117,86 @@ class GameAdapterTests(unittest.TestCase):
         self.assertEqual(len(self.events.onAvatarReady.handlers), 0)
         self.assertEqual(len(self.events.onAccountBecomePlayer.handlers), 0)
 
+
+    def test_client_utility_supplies_account_when_player_attribute_is_missing(self):
+        shared = types.ModuleType('gui.shared')
+        utils = types.ModuleType('gui.shared.utils')
+        utils.getPlayerDatabaseID = lambda: 77
+        sys.modules['gui.shared'] = shared
+        sys.modules['gui.shared.utils'] = utils
+        self.player.databaseID = None
+        self.game.init()
+        self.events.onAccountBecomePlayer.fire()
+        self.events.onAvatarReady.fire()
+        self.assertEqual(self.game._pending.context(1234)['account_id'], '77')
+        self.player.arenaUniqueID = None
+        self.events.onBattleResultsReceived.fire(True, {
+            'arenaUniqueID': 1234, 'common': {'winnerTeam': 1},
+            'personal': {42: {'team': 1, 'damageDealt': 1111, 'xp': 400}},
+        })
+        self.assertEqual(len(self.game._store.records), 1)
+        self.assertEqual(self.game._store.records[0]['account_id'], '77')
+
+    def test_legacy_dossier_fallback_without_utility(self):
+        helpers = types.ModuleType('helpers')
+        dossier = types.SimpleNamespace(getPlayerDBID=lambda: 66)
+        cache = types.SimpleNamespace(items=types.SimpleNamespace(
+            getAccountDossier=lambda: dossier))
+        helpers.dependency = types.SimpleNamespace(instance=lambda _: cache)
+        skeletons = types.ModuleType('skeletons')
+        skeletons.__path__ = []
+        skeletons_gui = types.ModuleType('skeletons.gui')
+        skeletons_gui.__path__ = []
+        skeletons_shared = types.ModuleType('skeletons.gui.shared')
+        skeletons_shared.__path__ = []
+        skeletons_shared.IItemsCache = object
+        sys.modules.update({'helpers': helpers, 'skeletons': skeletons,
+                            'skeletons.gui': skeletons_gui,
+                            'skeletons.gui.shared': skeletons_shared})
+        self.player.databaseID = None
+        self.game.init()
+        self.events.onAccountBecomePlayer.fire()
+        self.events.onAvatarReady.fire()
+        self.assertEqual(self.game._pending.context(1234)['account_id'], '66')
+        self.player.arenaUniqueID = None
+        self.events.onBattleResultsReceived.fire(True, {
+            'arenaUniqueID': 1234, 'common': {'winnerTeam': 1},
+            'personal': {42: {'team': 1, 'damageDealt': 350, 'xp': 180}},
+        })
+        self.assertEqual(self.game._store.records[0]['account_id'], '66')
+
+    def test_disagreeing_client_identity_sources_pause_collection(self):
+        shared = types.ModuleType('gui.shared')
+        utils = types.ModuleType('gui.shared.utils')
+        utils.getPlayerDatabaseID = lambda: 99
+        sys.modules['gui.shared'] = shared
+        sys.modules['gui.shared.utils'] = utils
+        self.game.init()
+        self.events.onAccountBecomePlayer.fire()
+        self.assertIsNone(self.game._account_id)
+        self.events.onAvatarReady.fire()
+        self.assertNotIn('account_id', self.game._pending.context(1234))
+        self.events.onBattleResultsReceived.fire(True, {
+            'arenaUniqueID': 1234, 'common': {'winnerTeam': 1},
+            'personal': {42: {'team': 1, 'damageDealt': 1111, 'xp': 400}},
+        })
+        self.assertEqual(self.game._store.records, [])
+        self.assertTrue(any('identity sources disagree' in x for x in self.notes))
+        self.assertFalse(any('99' in x for x in self.notes))
+
+    def test_absent_account_stays_absent_instead_of_using_entity_id(self):
+        shared = types.ModuleType('gui.shared')
+        utils = types.ModuleType('gui.shared.utils')
+        utils.getPlayerDatabaseID = lambda: None
+        sys.modules['gui.shared'] = shared
+        sys.modules['gui.shared.utils'] = utils
+        self.player.databaseID = None
+        self.game.init()
+        self.events.onAccountBecomePlayer.fire()
+        self.events.onAvatarReady.fire()
+        self.assertNotIn('account_id', self.game._pending.context(1234))
+        self.assertIsNone(self.game._context().get('account_id'))
+
     def test_login_event_invalidates_old_account(self):
         self.game.init()
         self.events.onAccountBecomePlayer.fire()

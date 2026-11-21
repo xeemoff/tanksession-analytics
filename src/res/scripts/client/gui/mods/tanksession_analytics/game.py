@@ -50,6 +50,45 @@ def _notice_once(key, message):
         _log(message)
 
 
+def _live_account_identity(player):
+    """Return (verified account ID, conflict), never a temporary entity ID.
+
+    Alternate client accessors are probes: availability in a particular
+    Mir Tankov release must be established by an actual in-game test.
+    """
+    if player is None:
+        return None, False
+    candidates = []
+    try:
+        direct = _verified_account(getattr(player, 'databaseID', None))
+        if direct is not None:
+            candidates.append(direct)
+    except Exception:
+        pass
+    try:
+        from gui.shared.utils import getPlayerDatabaseID
+        helper = _verified_account(getPlayerDatabaseID())
+        if helper is not None:
+            candidates.append(helper)
+    except Exception:
+        pass
+    if not candidates:
+        try:
+            from helpers import dependency
+            from skeletons.gui.shared import IItemsCache
+            dossier = dependency.instance(IItemsCache).items.getAccountDossier()
+            fallback = _verified_account(dossier.getPlayerDBID())
+            if fallback is not None:
+                candidates.append(fallback)
+        except Exception:
+            pass
+    if len(set(candidates)) > 1:
+        _notice_once('account_conflict',
+                     'Account identity sources disagree; collection paused')
+        return None, True
+    return (candidates[0] if candidates else None), False
+
+
 def _context():
     context = {}
     try:
@@ -57,11 +96,16 @@ def _context():
         if player is None:
             # No active client entity: never reuse an old cached account.
             return context
-        if _account_id is not None:
-            context['account_id'] = _account_id
-        account_id = getattr(player, 'databaseID', None)
-        if account_id:
-            context['account_id'] = account_id
+        live, conflict = _live_account_identity(player)
+        cached = _verified_account(_account_id)
+        if not conflict and live is not None and cached is not None and live != cached:
+            _notice_once('account_conflict',
+                         'Account identity changed unexpectedly; collection paused')
+            conflict = True
+        if not conflict:
+            account = live or cached
+            if account is not None:
+                context['account_id'] = account
         vehicle_id = getattr(player, 'playerVehicleID', None)
         if vehicle_id is not None:
             context['player_vehicle_id'] = vehicle_id
@@ -152,7 +196,7 @@ def _try_recover():
         player = BigWorld.player()
         if player is None:
             return
-        account_id = _verified_account(getattr(player, 'databaseID', None) or _account_id)
+        account_id = _verified_account(_context().get('account_id'))
         cache = getattr(player, 'battleResultsCache', None)
         _recovery.poll(cache, account_id)
         if cache is None or not callable(getattr(cache, 'get', None)):
@@ -189,9 +233,10 @@ def _on_account_become_player(*args, **kwargs):
     _cancel_recovery_timers()
     try:
         player = BigWorld.player()
-        identifier = getattr(player, 'databaseID', None)
-        if identifier:
-            _account_id = identifier
+        identifier, conflict = _live_account_identity(player)
+        if not conflict and identifier is not None:
+            direct = getattr(player, 'databaseID', None)
+            _account_id = direct if _verified_account(direct) == identifier else identifier
     except Exception:
         pass
     if _verified_account(_account_id) is None:
@@ -282,7 +327,8 @@ def _ui_account():
         if (getattr(player, 'arenaUniqueID', None) not in (None, 0) or
                 getattr(player, 'arena', None) is not None):
             return None
-        return _verified_account(getattr(player, 'databaseID', None))
+        account, conflict = _live_account_identity(player)
+        return None if conflict else account
     except Exception:
         return None
 
