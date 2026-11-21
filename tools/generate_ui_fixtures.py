@@ -37,12 +37,27 @@ def fixtures():
     for vehicle in [''] + sorted(set(row['vehicle'] for row in rows)):
         for window in (10, 30, 100):
             variants.append(snapshot(rows, vehicle=vehicle, window=window))
+
+    def coach_rows(damage):
+        return [dict(rows[0], arena_id='coach-demo-%d' % index, account_id='demo',
+                     vehicle='IS-7', mode='1', timestamp=rows[0]['timestamp'] + index * 180,
+                     damage=value, xp=500, outcome='win')
+                for index, value in enumerate(damage)]
+
+    mixed_modes = coach_rows([1000] * 10 + [1200] * 10)
+    for row in mixed_modes[10:]:
+        row['mode'] = '7'
     return {
         'demo.json': snapshot(rows),
         'demo_filters.json': variants,
         'empty.json': snapshot([]),
         'incomplete.json': snapshot(incomplete),
         'account_unavailable.json': snapshot(rows, account=None),
+        'coach_ready.json': snapshot(coach_rows([1000] * 10 + [900] * 9 + [10000])),
+        'coach_collecting.json': snapshot(coach_rows([700])),
+        'coach_incomplete.json': snapshot(coach_rows([1000] * 10 + [1200] * 9 + [None])),
+        'coach_record.json': snapshot(coach_rows([1000] * 20 + [3500])),
+        'coach_mixed_modes.json': snapshot(mixed_modes),
     }
 
 

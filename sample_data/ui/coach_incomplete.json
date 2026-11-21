@@ -1,0 +1,252 @@
+{
+  "coach": {
+    "battles": 20,
+    "comparison": null,
+    "coverage": {
+      "current_battles": 10,
+      "current_damage": 9,
+      "previous_battles": 10,
+      "previous_damage": 10
+    },
+    "records": {
+      "best_damage": 1200,
+      "best_window_avg": 1180,
+      "current_window_avg": null,
+      "latest_damage": null,
+      "new_damage_record": false,
+      "new_window_record": false,
+      "previous_best_damage": 1200,
+      "previous_best_window_avg": 1180
+    },
+    "remaining_battles": 0,
+    "required_battles": 20,
+    "status": "incomplete",
+    "vehicle": "IS-7",
+    "version": 1,
+    "window": 10
+  },
+  "comparison": {
+    "current": {
+      "avg_damage": 1200.0,
+      "avg_xp": 500.0,
+      "battles": 10,
+      "damage_samples": 9,
+      "draws": 0,
+      "known_outcomes": 10,
+      "losses": 0,
+      "win_rate": 100.0,
+      "wins": 10
+    },
+    "damage_delta": 200.0,
+    "enough_current": true,
+    "enough_previous": true,
+    "previous": {
+      "avg_damage": 1000.0,
+      "avg_xp": 500.0,
+      "battles": 10,
+      "damage_samples": 10,
+      "draws": 0,
+      "known_outcomes": 10,
+      "losses": 0,
+      "win_rate": 100.0,
+      "wins": 10
+    },
+    "win_rate_delta_pp": 0.0,
+    "window": 10
+  },
+  "goals": [
+    {
+      "avg_damage": 1200.0,
+      "battles": 10,
+      "known_damage": 9,
+      "status": "not_achieved",
+      "target": 2700,
+      "vehicle": "IS-7",
+      "window": 10
+    },
+    {
+      "avg_damage": null,
+      "battles": 0,
+      "known_damage": 0,
+      "status": "in_progress",
+      "target": 2600,
+      "vehicle": "Object 277",
+      "window": 10
+    }
+  ],
+  "history": [
+    {
+      "damage": null,
+      "outcome": "win",
+      "timestamp": 1794166020,
+      "vehicle": "IS-7",
+      "xp": 500
+    },
+    {
+      "damage": 1200,
+      "outcome": "win",
+      "timestamp": 1794165840,
+      "vehicle": "IS-7",
+      "xp": 500
+    },
+    {
+      "damage": 1200,
+      "outcome": "win",
+      "timestamp": 1794165660,
+      "vehicle": "IS-7",
+      "xp": 500
+    },
+    {
+      "damage": 1200,
+      "outcome": "win",
+      "timestamp": 1794165480,
+      "vehicle": "IS-7",
+      "xp": 500
+    },
+    {
+      "damage": 1200,
+      "outcome": "win",
+      "timestamp": 1794165300,
+      "vehicle": "IS-7",
+      "xp": 500
+    },
+    {
+      "damage": 1200,
+      "outcome": "win",
+      "timestamp": 1794165120,
+      "vehicle": "IS-7",
+      "xp": 500
+    },
+    {
+      "damage": 1200,
+      "outcome": "win",
+      "timestamp": 1794164940,
+      "vehicle": "IS-7",
+      "xp": 500
+    },
+    {
+      "damage": 1200,
+      "outcome": "win",
+      "timestamp": 1794164760,
+      "vehicle": "IS-7",
+      "xp": 500
+    },
+    {
+      "damage": 1200,
+      "outcome": "win",
+      "timestamp": 1794164580,
+      "vehicle": "IS-7",
+      "xp": 500
+    },
+    {
+      "damage": 1200,
+      "outcome": "win",
+      "timestamp": 1794164400,
+      "vehicle": "IS-7",
+      "xp": 500
+    },
+    {
+      "damage": 1000,
+      "outcome": "win",
+      "timestamp": 1794164220,
+      "vehicle": "IS-7",
+      "xp": 500
+    },
+    {
+      "damage": 1000,
+      "outcome": "win",
+      "timestamp": 1794164040,
+      "vehicle": "IS-7",
+      "xp": 500
+    }
+  ],
+  "protocol": 1,
+  "quality": {
+    "conflicts": 0,
+    "incomplete_records": 1,
+    "invalid_records": 0,
+    "total_records": 20
+  },
+  "request_id": "fixture",
+  "selection": {
+    "vehicle": "",
+    "window": 10
+  },
+  "series": [
+    {
+      "avg_damage": 1000.0,
+      "battle": 10,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1020.0,
+      "battle": 11,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1040.0,
+      "battle": 12,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1060.0,
+      "battle": 13,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1080.0,
+      "battle": 14,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1100.0,
+      "battle": 15,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1120.0,
+      "battle": 16,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1140.0,
+      "battle": 17,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1160.0,
+      "battle": 18,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1180.0,
+      "battle": 19,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1200.0,
+      "battle": 20,
+      "known_damage": 9
+    }
+  ],
+  "source": "demo",
+  "status": "ready",
+  "summary": {
+    "avg_damage": 1094.7,
+    "avg_xp": 500.0,
+    "battles": 20,
+    "damage_samples": 19,
+    "draws": 0,
+    "known_outcomes": 20,
+    "losses": 0,
+    "win_rate": 100.0,
+    "wins": 20
+  },
+  "updated_at": 1794943860,
+  "vehicles": [
+    {
+      "battles": 20,
+      "name": "IS-7"
+    }
+  ]
+}

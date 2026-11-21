@@ -1,4 +1,30 @@
 {
+  "coach": {
+    "battles": 0,
+    "comparison": null,
+    "coverage": {
+      "current_battles": 0,
+      "current_damage": 0,
+      "previous_battles": 0,
+      "previous_damage": 0
+    },
+    "records": {
+      "best_damage": null,
+      "best_window_avg": null,
+      "current_window_avg": null,
+      "latest_damage": null,
+      "new_damage_record": false,
+      "new_window_record": false,
+      "previous_best_damage": null,
+      "previous_best_window_avg": null
+    },
+    "remaining_battles": 20,
+    "required_battles": 20,
+    "status": "empty",
+    "vehicle": "",
+    "version": 1,
+    "window": 10
+  },
   "comparison": {
     "current": {
       "avg_damage": null,

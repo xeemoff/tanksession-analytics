@@ -1,4 +1,30 @@
 {
+  "coach": {
+    "battles": 0,
+    "comparison": null,
+    "coverage": {
+      "current_battles": 0,
+      "current_damage": 0,
+      "previous_battles": 0,
+      "previous_damage": 0
+    },
+    "records": {
+      "best_damage": null,
+      "best_window_avg": null,
+      "current_window_avg": null,
+      "latest_damage": null,
+      "new_damage_record": false,
+      "new_window_record": false,
+      "previous_best_damage": null,
+      "previous_best_window_avg": null
+    },
+    "remaining_battles": 20,
+    "required_battles": 20,
+    "status": "choose_vehicle",
+    "vehicle": "",
+    "version": 1,
+    "window": 10
+  },
   "comparison": {
     "current": {
       "avg_damage": 2865.3,
@@ -30,7 +56,7 @@
   },
   "goals": [
     {
-      "avg_damage": 2813.7,
+      "avg_damage": 2865.3,
       "battles": 10,
       "known_damage": 3,
       "status": "insufficient_data",
@@ -39,7 +65,7 @@
       "window": 10
     },
     {
-      "avg_damage": 2937.8,
+      "avg_damage": 1639.5,
       "battles": 10,
       "known_damage": 4,
       "status": "insufficient_data",
@@ -60,14 +86,14 @@
       "damage": null,
       "outcome": "loss",
       "timestamp": 1794942000,
-      "vehicle": "Leopard 1",
+      "vehicle": "IS-7",
       "xp": null
     },
     {
       "damage": 3305,
       "outcome": "unknown",
       "timestamp": 1794940200,
-      "vehicle": "Object 277",
+      "vehicle": "IS-7",
       "xp": 865
     },
     {
@@ -81,21 +107,21 @@
       "damage": null,
       "outcome": "loss",
       "timestamp": 1794859200,
-      "vehicle": "Leopard 1",
+      "vehicle": "IS-7",
       "xp": 819
     },
     {
       "damage": 2912,
       "outcome": "win",
       "timestamp": 1794857400,
-      "vehicle": "Object 277",
+      "vehicle": "IS-7",
       "xp": null
     },
     {
       "damage": null,
       "outcome": "draw",
       "timestamp": 1794855600,
-      "vehicle": "T-34-85",
+      "vehicle": "IS-7",
       "xp": 773
     },
     {
@@ -109,14 +135,14 @@
       "damage": 2379,
       "outcome": "win",
       "timestamp": 1794774600,
-      "vehicle": "Object 277",
+      "vehicle": "IS-7",
       "xp": 727
     },
     {
       "damage": null,
       "outcome": "win",
       "timestamp": 1794772800,
-      "vehicle": "T-34-85",
+      "vehicle": "IS-7",
       "xp": null
     },
     {
@@ -130,7 +156,7 @@
       "damage": 1986,
       "outcome": "win",
       "timestamp": 1794769200,
-      "vehicle": "Leopard 1",
+      "vehicle": "IS-7",
       "xp": null
     }
   ],
@@ -359,19 +385,19 @@
   "updated_at": 1794943860,
   "vehicles": [
     {
-      "battles": 15,
+      "battles": 24,
       "name": "IS-7"
     },
     {
-      "battles": 14,
+      "battles": 10,
       "name": "Object 277"
     },
     {
-      "battles": 10,
+      "battles": 7,
       "name": "Leopard 1"
     },
     {
-      "battles": 9,
+      "battles": 7,
       "name": "T-34-85"
     }
   ]

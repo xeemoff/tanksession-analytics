@@ -73,6 +73,7 @@ jobs:
             dist/*_Preview.zip
             dist/*_Preview.zip.sha256
             ui/test-results/hangar-demo.png
+            ui/test-results/hangar-coach.png
           if-no-files-found: error
           retention-days: 14
       - name: Upload browser failure details
@@ -134,6 +135,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_build.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_gameface.py -v
+          "$PYTHON2" -m unittest discover -s tests -p test_coach.py -v
       - name: Build candidate and inspect structure
         shell: bash
         run: |

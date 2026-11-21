@@ -396,6 +396,45 @@ class GameAdapterTests(unittest.TestCase):
                 json.dump({'experimental_gameface_ui': value}, stream)
             self.assertEqual(self.game._load_ui_opt_in(), value is True)
 
+    def test_windows_utf8_bom_settings_enable_ui_without_changing_file(self):
+        self._install_optional_ui()
+        path = os.path.join(self.folder.name, 'settings.json')
+        settings = {'experimental_gameface_ui': True,
+                    'experimental_cache_recovery': False, 'label': u'Настройки'}
+        raw = json.dumps(settings, ensure_ascii=False).encode('utf-8-sig')
+        with open(path, 'wb') as stream:
+            stream.write(raw)
+        self.game.init()
+        self.assertIsNotNone(self.game._gameface)
+        self.assertEqual(self.game._read_local_settings(), settings)
+        with open(path, 'rb') as stream:
+            self.assertEqual(stream.read(), raw)
+
+    def test_bom_settings_still_reject_wrong_types_invalid_bytes_and_oversize(self):
+        path = os.path.join(self.folder.name, 'settings.json')
+        cases = (b'\xef\xbb\xbf[true]', b'\xef\xbb\xbf{"experimental_gameface_ui":"true"}',
+                 b'\xef\xbb\xbf{"experimental_gameface_ui":true}\xff',
+                 b'\xef\xbb\xbf{"experimental_gameface_ui":true}' + b' ' * 4096)
+        for raw in cases:
+            with open(path, 'wb') as stream:
+                stream.write(raw)
+            self.assertFalse(self.game._load_ui_opt_in())
+
+    def test_windows_utf8_bom_goals_keep_unicode_and_validation(self):
+        path = os.path.join(self.folder.name, 'goals.json')
+        goals = [{'account_id': '88', 'vehicle': u'ИС-7',
+                  'target_avg_damage': 2000, 'window': 10}]
+        with open(path, 'wb') as stream:
+            stream.write(json.dumps(goals, ensure_ascii=False).encode('utf-8-sig'))
+        self.assertEqual(self.game._ui_goals(), goals)
+        for raw in (b'\xef\xbb\xbf{}', b'\xef\xbb\xbf[]' + b' ' * 65536,
+                    b'\xef\xbb\xbf["PRIVATE_INVALID_GOAL"]'):
+            with open(path, 'wb') as stream:
+                stream.write(raw)
+            with self.assertRaises(ValueError):
+                self.game._ui_goals()
+        self.assertFalse(any('PRIVATE_INVALID_GOAL' in line for line in self.notes))
+
     def test_disabled_ui_does_not_construct_loader_adapter(self):
         self._install_optional_ui(broken=True)
         self.game.init()

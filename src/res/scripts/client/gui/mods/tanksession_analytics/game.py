@@ -307,7 +307,8 @@ def _read_local_settings():
             raw = stream.read(4097)
         if len(raw) > 4096:
             return {}
-        settings = json.loads(raw.decode('utf-8'))
+        # Windows editors and PowerShell 5.1 may prefix UTF-8 files with BOM.
+        settings = json.loads(raw.decode('utf-8-sig'))
         return settings if isinstance(settings, dict) else {}
     except (IOError, OSError, ValueError, UnicodeError):
         return {}
@@ -356,7 +357,7 @@ def _ui_goals():
             raw = stream.read(65537)
         if len(raw) > 65536:
             raise ValueError('Goals file too large')
-        goals = validate_goals(json.loads(raw.decode('utf-8')))
+        goals = validate_goals(json.loads(raw.decode('utf-8-sig')))
         _notices.discard('ui_goals')
         return goals
     except (IOError, OSError, ValueError, UnicodeError):

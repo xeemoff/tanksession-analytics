@@ -1,0 +1,109 @@
+{
+  "coach": {
+    "battles": 1,
+    "comparison": null,
+    "coverage": {
+      "current_battles": 1,
+      "current_damage": 1,
+      "previous_battles": 0,
+      "previous_damage": 0
+    },
+    "records": {
+      "best_damage": 700,
+      "best_window_avg": null,
+      "current_window_avg": null,
+      "latest_damage": 700,
+      "new_damage_record": false,
+      "new_window_record": false,
+      "previous_best_damage": null,
+      "previous_best_window_avg": null
+    },
+    "remaining_battles": 19,
+    "required_battles": 20,
+    "status": "collecting",
+    "vehicle": "IS-7",
+    "version": 1,
+    "window": 10
+  },
+  "comparison": {
+    "current": {
+      "avg_damage": 700.0,
+      "avg_xp": 500.0,
+      "battles": 1,
+      "damage_samples": 1,
+      "draws": 0,
+      "known_outcomes": 1,
+      "losses": 0,
+      "win_rate": 100.0,
+      "wins": 1
+    },
+    "damage_delta": null,
+    "enough_current": false,
+    "enough_previous": false,
+    "previous": null,
+    "win_rate_delta_pp": null,
+    "window": 10
+  },
+  "goals": [
+    {
+      "avg_damage": 700.0,
+      "battles": 1,
+      "known_damage": 1,
+      "status": "in_progress",
+      "target": 2700,
+      "vehicle": "IS-7",
+      "window": 10
+    },
+    {
+      "avg_damage": null,
+      "battles": 0,
+      "known_damage": 0,
+      "status": "in_progress",
+      "target": 2600,
+      "vehicle": "Object 277",
+      "window": 10
+    }
+  ],
+  "history": [
+    {
+      "damage": 700,
+      "outcome": "win",
+      "timestamp": 1794162600,
+      "vehicle": "IS-7",
+      "xp": 500
+    }
+  ],
+  "protocol": 1,
+  "quality": {
+    "conflicts": 0,
+    "incomplete_records": 0,
+    "invalid_records": 0,
+    "total_records": 1
+  },
+  "request_id": "fixture",
+  "selection": {
+    "vehicle": "",
+    "window": 10
+  },
+  "series": [],
+  "source": "demo",
+  "status": "ready",
+  "summary": {
+    "avg_damage": 700.0,
+    "avg_xp": 500.0,
+    "battles": 1,
+    "damage_samples": 1,
+    "draws": 0,
+    "known_outcomes": 1,
+    "losses": 0,
+    "win_rate": 100.0,
+    "wins": 1
+  },
+  "updated_at": 1794943860,
+  "vehicles": [
+    {
+      "battles": 1,
+      "name": "IS-7"
+    }
+  ]
+}
