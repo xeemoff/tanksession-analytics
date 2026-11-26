@@ -1,8 +1,8 @@
-# Быстрый старт — TankSession Analytics 0.4.0-rc5
+# Быстрый старт — TankSession Analytics 0.4.0-rc6
 
 ## Посмотреть новый экран
 
-В успешном запуске [GitHub Actions](https://github.com/xeemoff/tanksession-analytics/actions/workflows/tests.yml) скачай artifact `tanksession-hangar-preview-...`, затем распакуй вложенный `TankSession_Analytics_0.4.0-rc5_Preview.zip`. Нужны Python 3.9+ и браузер. Запусти **demo_hangar.cmd** или:
+В успешном запуске [GitHub Actions](https://github.com/xeemoff/tanksession-analytics/actions/workflows/tests.yml) скачай artifact `tanksession-hangar-preview-...`, затем распакуй вложенный `TankSession_Analytics_0.4.0-rc6_Preview.zip`. Нужны Python 3.9+ и браузер. Запусти **demo_hangar.cmd** или:
 
 ```powershell
 python tools/preview_ui.py --demo
@@ -70,7 +70,7 @@ python tools/benchmark.py --battles 100000
 
 ## Проверить мод в игре
 
-**Сохранение одного реального боя подтверждено исправленным rc4 на клиенте 1.46.0.0.** Эти исправления включены в rc5. Новая версия, нативное окно и остальные игровые сценарии требуют отдельного испытания; см. фактический [протокол](docs/CLIENT_VALIDATION_RU.md).
+**В rc4 подтверждён сбор реального боя, в rc5 — открытие Gameface и интерактивные фильтры.** Rc6 с вкладками и постраничной историей требует отдельного испытания; см. [протокол](docs/CLIENT_VALIDATION_RU.md).
 
 Используй [пошаговый тест-план](docs/CHECK_CLIENT_RU.md) и [протокол совместимости](docs/CLIENT_VALIDATION_RU.md). Артефакт успешной CI-сборки содержит пакет и SHA-256. Локальная сборка требует отдельного CPython 2.7 и предварительно собранного интерфейса `ui/dist`:
 
@@ -78,7 +78,7 @@ python tools/benchmark.py --battles 100000
 python tools/build.py --python2 "C:\Python27\python.exe"
 ```
 
-Пакет создаётся в `dist/ru.tanksession.analytics_0.4.0-rc5.mtmod`. Автоматической установки нет. Восстановление через игровой кэш остаётся выключенным до проверки его API.
+Пакет создаётся в `dist/ru.tanksession.analytics_0.4.0-rc6.mtmod`. Автоматической установки нет. Восстановление через игровой кэш остаётся выключенным до проверки его API.
 
 Для обсуждения неисправностей достаточно версии клиента, описания сценария и обезличенных счётчиков:
 
