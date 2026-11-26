@@ -181,12 +181,22 @@ class WorkspaceTests(unittest.TestCase):
         library = WindowsLibrary()
         library.kernel32 = WindowsLibrary()
         library.kernel32.MoveFileExW = move
+        # Python 2.7's real ctypes.wintypes imports VARIANT_BOOL, which cannot
+        # be constructed by non-Windows ctypes. This test simulates the API;
+        # the separate Windows-only test exercises the actual native types.
+        windows_types = WindowsLibrary()
+        windows_types.LPCWSTR = ctypes.c_wchar_p
+        windows_types.DWORD = ctypes.c_ulong
+        windows_types.BOOL = ctypes.c_int
+        missing = object()
         original_os = module.os
         original_encoding = sys.getfilesystemencoding
-        original_windll = getattr(ctypes, 'windll', None)
+        original_windll = getattr(ctypes, 'windll', missing)
+        original_wintypes = getattr(ctypes, 'wintypes', missing)
         module.os = LegacyWindowsOS()
         sys.getfilesystemencoding = lambda: 'cp1251'
         ctypes.windll = library
+        ctypes.wintypes = windows_types
         try:
             source = u'C:\\Игры\\Танки\\profiles\\.tsa-new.tmp'
             destination = u'C:\\Игры\\Танки\\profiles\\profile.json'
@@ -203,10 +213,14 @@ class WorkspaceTests(unittest.TestCase):
         finally:
             module.os = original_os
             sys.getfilesystemencoding = original_encoding
-            if original_windll is None:
+            if original_windll is missing:
                 del ctypes.windll
             else:
                 ctypes.windll = original_windll
+            if original_wintypes is missing:
+                del ctypes.wintypes
+            else:
+                ctypes.wintypes = original_wintypes
 
     @unittest.skipUnless(os.name == 'nt', 'Exercises the real Windows MoveFileExW fallback')
     def test_windows_legacy_replace_preserves_unicode_profile_and_backup(self):

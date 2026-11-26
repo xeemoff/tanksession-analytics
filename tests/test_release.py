@@ -22,6 +22,7 @@ class ReleaseFixture(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.mod_id, self.version = project_metadata()
         self.package = self.root / ('%s_%s.mtmod' % (self.mod_id, self.version))
+        # Keep <name>: it shadows XmlElement.Name in PowerShell's XML adapter.
         self.metadata = ('<root><id>%s</id><version>%s</version><name>Test</name></root>' %
                          (self.mod_id, self.version)).encode('utf-8')
         # A non-executable structural fixture. Installation copies bytes only.
@@ -188,6 +189,27 @@ class WindowsInstallerTests(ReleaseFixture):
         self.assertEqual(self.config.read_bytes(), b'private-history-sentinel\n')
         self.assertEqual(self.unrelated.read_bytes(), b'unrelated-sentinel')
 
+    def replace_metadata_with_valid_checksums(self, metadata):
+        # Reach semantic metadata validation, not an earlier integrity failure.
+        package = self.installer / self.package.name
+        with zipfile.ZipFile(package) as archive:
+            members = {name: archive.read(name) for name in archive.namelist()}
+        members['meta.xml'] = metadata
+        with zipfile.ZipFile(package, 'w', zipfile.ZIP_STORED) as archive:
+            for name, data in sorted(members.items()):
+                archive.writestr(name, data)
+        data = package.read_bytes()
+        digest = hashlib.sha256(data).hexdigest()
+        manifest_path = self.installer / 'manifest.json'
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+        manifest.update(package_size=len(data), sha256=digest)
+        for member in manifest['members']:
+            if member['path'] == 'meta.xml':
+                member.update(size=len(metadata), sha256=hashlib.sha256(metadata).hexdigest())
+        manifest_path.write_text(json.dumps(manifest), encoding='utf-8')
+        package.with_suffix('.mtmod.sha256').write_text(
+            '%s  %s\n' % (digest, package.name), encoding='ascii')
+
     def test_check_only_and_explicit_version(self):
         result = self.run_installer(check_only=True)
         self.assertEqual(result.returncode, 0, (result.stdout, result.stderr))
@@ -232,6 +254,22 @@ class WindowsInstallerTests(ReleaseFixture):
         self.assertEqual(self.old.read_bytes(), b'previous-package-sentinel')
         self.assertFalse((self.game / 'mods/tanksession_backups').exists())
         self.assert_private_data_untouched()
+
+    def test_metadata_mismatch_is_rejected_after_valid_checksums(self):
+        for metadata in (
+            self.metadata.replace(b'<root>', b'<other>').replace(b'</root>', b'</other>')
+                         .replace(b'<name>Test</name>', b'<name>root</name>'),
+            self.metadata.replace(self.mod_id.encode('utf-8'), b'ru.tanksession.other'),
+            self.metadata.replace(b'<version>', b'<version>999.'),
+        ):
+            with self.subTest(metadata=metadata):
+                self.replace_metadata_with_valid_checksums(metadata)
+                result = self.run_installer()
+                self.assert_rejected_for(result, 'Метаданные .mtmod не совпадают с manifest.json')
+                self.assertEqual(self.old.read_bytes(), b'previous-package-sentinel')
+                self.assertFalse((self.destination / self.package.name).exists())
+                self.assertFalse((self.game / 'mods/tanksession_backups').exists())
+                self.assert_private_data_untouched()
 
     def test_failed_replacement_restores_old_package(self):
         result = self.run_installer(before=(

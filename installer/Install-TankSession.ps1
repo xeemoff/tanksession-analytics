@@ -153,8 +153,18 @@ function Read-TankSessionBundle([string]$Directory) {
                         $metadata = New-Object Xml.XmlDocument
                         $metadata.XmlResolver = $null
                         $metadata.Load($xmlReader)
-                        if ($metadata.DocumentElement.Name -cne 'root' -or
-                            $metadata.root.id -cne $manifest.id -or $metadata.root.version -cne $manifest.version) {
+                        # The PowerShell XML adapter exposes child elements as
+                        # properties: <name> shadows XmlElement.Name. Call the
+                        # CLR getters and XPath methods explicitly instead.
+                        $documentRoot = $metadata.get_DocumentElement()
+                        if ($null -eq $documentRoot -or $documentRoot.get_Name() -cne 'root') {
+                            throw 'Метаданные .mtmod не совпадают с manifest.json: ожидается корневой элемент root.'
+                        }
+                        $idNode = $documentRoot.SelectSingleNode('id')
+                        $versionNode = $documentRoot.SelectSingleNode('version')
+                        if ($null -eq $idNode -or $null -eq $versionNode -or
+                            $idNode.get_InnerText() -cne $manifest.id -or
+                            $versionNode.get_InnerText() -cne $manifest.version) {
                             throw 'Метаданные .mtmod не совпадают с manifest.json.'
                         }
                     } finally { $xmlReader.Dispose(); $textReader.Dispose() }
