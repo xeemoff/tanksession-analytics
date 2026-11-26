@@ -29,6 +29,7 @@ _initialized = False
 _account_id = None
 _hooks = []
 _timer_ids = []
+_deferred_timer = None
 _login_generation = 0
 _notices = set()
 _gameface = None
@@ -247,7 +248,7 @@ def _attach_result_service():
         _notice_once('result_service', 'Optional lobby result hook unavailable')
 
 
-def _try_recover(arena_id=None, posted=False):
+def _try_recover(arena_id=None, posted=False, deferred_only=False):
     if _recovery is None or not _initialized or _is_replay():
         return
     try:
@@ -256,14 +257,43 @@ def _try_recover(arena_id=None, posted=False):
             return
         player = BigWorld.player()
         cache = getattr(player, 'battleResultsCache', None)
-        _recovery.poll(cache, account_id, arena_id=arena_id, posted=posted)
+        if not posted and _recovery.has_deferred():
+            attempted = _recovery.drain_deferred(cache, account_id)
+            if not attempted and not _recovery.has_deferred() and not deferred_only:
+                _recovery.poll(cache, account_id)
+        elif not deferred_only:
+            _recovery.poll(cache, account_id, arena_id=arena_id, posted=posted)
         if cache is None or not callable(getattr(cache, 'get', None)):
             _notice_once('result_cache',
                          'Optional cache recovery unavailable: result cache API missing')
         else:
             _notices.discard('result_cache')
+            if _recovery.has_deferred():
+                _schedule_deferred_recovery()
     except Exception:
         _log('Optional cache recovery unavailable in this client state')
+
+
+def _schedule_deferred_recovery():
+    global _deferred_timer
+    if _deferred_timer is not None or not _initialized:
+        return
+    token = object()
+    generation = _login_generation
+    try:
+        timer = BigWorld.callback(2.0, lambda: _run_deferred_recovery(generation, token))
+        _deferred_timer = (timer, token)
+    except Exception:
+        _notice_once('deferred_timer', 'Deferred cache retry timer unavailable')
+
+
+def _run_deferred_recovery(generation, token):
+    global _deferred_timer
+    if (not _initialized or generation != _login_generation or
+            _deferred_timer is None or _deferred_timer[1] is not token):
+        return
+    _deferred_timer = None
+    _try_recover(deferred_only=True)
 
 
 def _delayed_recovery(generation):
@@ -273,6 +303,14 @@ def _delayed_recovery(generation):
 
 
 def _cancel_recovery_timers():
+    global _deferred_timer
+    if _deferred_timer is not None:
+        timer, unused_token = _deferred_timer
+        _deferred_timer = None
+        try:
+            BigWorld.cancelCallback(timer)
+        except Exception:
+            pass
     for timer in _timer_ids:
         try:
             BigWorld.cancelCallback(timer)

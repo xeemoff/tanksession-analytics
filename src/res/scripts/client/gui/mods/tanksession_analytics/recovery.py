@@ -27,6 +27,7 @@ class CacheRecovery(object):
         self.on_record = on_record
         self.serialize = serialize
         self._posted_attempted = set()
+        self._deferred_posted = []
         self.in_flight = {}
         self.attempted = {}
         self._request_tokens = {}
@@ -37,6 +38,7 @@ class CacheRecovery(object):
         self.active = False
         self.in_flight.clear()
         self._request_tokens.clear()
+        del self._deferred_posted[:]
 
     def reset_session(self, account_id=None):
         """Invalidate callbacks even when a new login reuses the same account.
@@ -49,6 +51,40 @@ class CacheRecovery(object):
         self._request_tokens.clear()
         self.attempted.clear()
         self._posted_attempted.clear()
+        del self._deferred_posted[:]
+
+    def has_deferred(self):
+        return bool(self._deferred_posted)
+
+    def _expire_requests(self, now):
+        for arena, started in list(self.in_flight.items()):
+            if now - started >= 60:
+                self.in_flight.pop(arena, None)
+                self._request_tokens.pop(arena, None)
+                self.log('Result cache request timed out')
+
+    def drain_deferred(self, cache, account_id, now=None):
+        """Try one queued lobby signal, with fresh eligibility and ownership checks."""
+        if not self.active:
+            return 0
+        account = _verified_account(account_id)
+        if account != self._account_id:
+            self.reset_session(account)
+        if account is None or cache is None or not callable(getattr(cache, 'get', None)):
+            return 0
+        now = time.time() if now is None else now
+        self._expire_requests(now)
+        eligible = set(entry['arena_id'] for entry in self.pending.eligible(account, now=now))
+        self._deferred_posted[:] = [arena for arena in self._deferred_posted
+                                   if arena in eligible and arena not in self._posted_attempted]
+        if self.serialize and self.in_flight:
+            return 0
+        while self._deferred_posted:
+            arena = self._deferred_posted.pop(0)
+            count = self.poll(cache, account, now=now, arena_id=arena, posted=True)
+            if count:
+                return count
+        return 0
 
     def poll(self, cache, account_id, now=None, arena_id=None, posted=False):
         """Return attempted requests, including calls that raise immediately."""
@@ -61,15 +97,22 @@ class CacheRecovery(object):
             return 0
         now = time.time() if now is None else now
         count = 0
-        # The native cache may serialize its own requests. Do not compete
-        # with a still-running request issued by this adapter.
-        if self.serialize and any(now - started < 60
-                                  for started in self.in_flight.values()):
-            return 0
+        self._expire_requests(now)
         entries = self.pending.eligible(account, now=now)
         if arena_id is not None:
             entries = [entry for entry in entries
                        if str(entry['arena_id']) == str(arena_id)]
+        # A posted-result event is not repeatable on demand. Preserve verified
+        # own-arena signals while the single native cache request is busy.
+        if self.serialize and self.in_flight:
+            if posted and arena_id is not None and self.max_requests > 0:
+                for entry in entries:
+                    arena = entry['arena_id']
+                    if arena not in self._posted_attempted and arena not in self._deferred_posted:
+                        if len(self._deferred_posted) >= 32:
+                            self._deferred_posted.pop(0)
+                        self._deferred_posted.append(arena)
+            return 0
         # Prefer untried entries, newest first; then least recently attempted.
         entries = sorted(reversed(entries),
                          key=lambda entry: self.attempted.get(entry['arena_id'], -1e100))
@@ -78,11 +121,7 @@ class CacheRecovery(object):
                 break
             arena = entry['arena_id']
             if arena in self.in_flight:
-                if now - self.in_flight[arena] < 60:
-                    continue
-                self.in_flight.pop(arena, None)  # lost callback, allow retry
-                self._request_tokens.pop(arena, None)
-                self.log('Result cache request timed out')
+                continue
             # The lobby service has just obtained the result. Permit one
             # early retry on this explicit signal, not on every UI click.
             early = posted and arena not in self._posted_attempted
@@ -95,6 +134,8 @@ class CacheRecovery(object):
             self.attempted[arena] = now
             if posted:
                 self._posted_attempted.add(arena)
+                if arena in self._deferred_posted:
+                    self._deferred_posted.remove(arena)
             self.in_flight[arena] = now
             token = object()
             self._request_tokens[arena] = token

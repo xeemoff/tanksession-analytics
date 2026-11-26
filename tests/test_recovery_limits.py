@@ -70,6 +70,61 @@ class RecoveryLimitTests(unittest.TestCase):
         self.assertEqual(recovery.poll(cache, 'A', now=103, arena_id=3, posted=True), 0)
         self.assertFalse(recorder.calls)
 
+    def test_deferred_posted_signal_drains_once_after_busy_request(self):
+        pending = Pending([('1', 'A'), ('2', 'A'), ('3', 'B')])
+        cache = Cache()
+        recovery = CacheRecovery(pending, Recorder(), max_requests=1, serialize=True)
+        recovery.poll(cache, 'A', now=100)
+        self.assertEqual(cache.requests[0][0], 2)
+        for arena in (1, 1, 3):
+            self.assertEqual(recovery.poll(cache, 'A', now=101,
+                                           arena_id=arena, posted=True), 0)
+        self.assertTrue(recovery.has_deferred())
+        self.assertEqual(recovery.drain_deferred(cache, 'A', now=102), 0)
+        cache.reply(0, error=-10)
+        self.assertEqual(recovery.drain_deferred(cache, 'A', now=103), 1)
+        self.assertEqual([item[0] for item in cache.requests], [2, 1])
+        self.assertFalse(recovery.has_deferred())
+
+    def test_deferred_signal_already_resolved_is_not_requested(self):
+        pending = Pending([('1', 'A')])
+        cache = Cache()
+        recovery = CacheRecovery(pending, Recorder(), max_requests=1, serialize=True)
+        recovery.poll(cache, 'A', now=100)
+        recovery.poll(cache, 'A', now=101, arena_id=1, posted=True)
+        self.assertTrue(recovery.has_deferred())
+        cache.reply(0)
+        pending.accounts = []
+        self.assertEqual(recovery.drain_deferred(cache, 'A', now=102), 0)
+        self.assertFalse(recovery.has_deferred())
+        self.assertEqual(len(cache.requests), 1)
+
+    def test_deferred_drain_after_timeout_rejects_old_callback(self):
+        recorder, cache = Recorder(), Cache()
+        recovery = CacheRecovery(Pending([('1', 'A'), ('2', 'A')]), recorder,
+                                 max_requests=1, serialize=True)
+        recovery.poll(cache, 'A', now=100)
+        recovery.poll(cache, 'A', now=101, arena_id=1, posted=True)
+        self.assertEqual(recovery.drain_deferred(cache, 'A', now=160), 1)
+        cache.reply(0)
+        self.assertFalse(recorder.calls)
+        cache.reply(1)
+        self.assertEqual(len(recorder.calls), 1)
+
+    def test_deferred_work_does_not_cross_login_or_stop(self):
+        recovery = CacheRecovery(Pending([('1', 'A')]), Recorder(),
+                                 max_requests=1, serialize=True)
+        cache = Cache()
+        recovery.poll(cache, 'A', now=100)
+        recovery.poll(cache, 'A', now=101, arena_id=1, posted=True)
+        recovery.reset_session('A')
+        self.assertFalse(recovery.has_deferred())
+        recovery.poll(cache, 'A', now=102)
+        recovery.poll(cache, 'A', now=103, arena_id=1, posted=True)
+        self.assertTrue(recovery.has_deferred())
+        recovery.stop()
+        self.assertFalse(recovery.has_deferred())
+
     def test_zero_budget_makes_no_request(self):
         recovery = CacheRecovery(Pending([('1', 'A')]), Recorder(), max_requests=0)
         cache = Cache()

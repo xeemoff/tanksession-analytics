@@ -354,6 +354,42 @@ class GameAdapterTests(unittest.TestCase):
         self.assertEqual(len(requests), 1)
         self.assertTrue(any('Recovered battle: complete' in line for line in self.notes))
 
+    def test_busy_lobby_result_gets_its_own_deferred_timer(self):
+        self.game._load_cache_opt_in = lambda: True
+        requests, callbacks = [], []
+
+        def schedule(delay, callback):
+            callbacks.append((delay, callback))
+            return len(callbacks)
+
+        sys.modules['BigWorld'].callback = schedule
+        self.player.battleResultsCache = types.SimpleNamespace(
+            get=lambda arena, callback: requests.append((arena, callback)))
+        self.game.init()
+        self.game._on_account_become_player()
+        self.game._on_avatar_ready()
+        self.player.arenaUniqueID = 2345
+        self.game._on_avatar_ready()
+        self.player.arenaUniqueID = None
+        self.player.playerVehicleID = None
+        self.game._try_recover()
+        self.assertEqual(len(requests), 1)
+        pending_arena = 1234 if requests[0][0] == 2345 else 2345
+        posted = types.SimpleNamespace(arenaUniqueID=pending_arena,
+            personal=types.SimpleNamespace(avatar=types.SimpleNamespace(accountDBID=88)))
+        self.game._on_result_posted(posted)
+        self.game._on_result_posted(posted)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual([item[0] for item in callbacks], [20.0, 2.0])
+        callbacks[1][1]()  # cache is still busy; retain exactly one retry
+        self.assertEqual(len(requests), 1)
+        self.assertEqual([item[0] for item in callbacks], [20.0, 2.0, 2.0])
+        requests[0][1](-10, None)
+        callbacks[2][1]()
+        self.assertEqual([item[0] for item in requests][1:], [pending_arena])
+        self.assertIsNone(self.game._deferred_timer)
+        self.assertFalse(self.game._recovery.has_deferred())
+
     def test_delayed_recovery_timer_belongs_to_one_login(self):
         self.game._load_cache_opt_in = lambda: True
         callbacks, cancelled = [], []
