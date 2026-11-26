@@ -3,6 +3,21 @@ import { mkdir } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Page } from '@playwright/test';
+import { createHash } from 'node:crypto';
+
+// Capture the actual browser render using only the synthetic preview data.
+// The temporary CI text transfer is removed after the docs assets are committed.
+async function captureDocumentation(page: Page, name: string) {
+  await mkdir('test-results', { recursive: true });
+  await page.screenshot({ path: 'test-results/hangar-' + name + '.png', fullPage: true });
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    const jpeg = await page.screenshot({ type: 'jpeg', quality: 86, fullPage: true });
+    const b64 = jpeg.toString('base64');
+    const chunks = b64.match(/.{1,2048}/g) || [];
+    console.log('TSA_DOC_META:' + name + ':' + chunks.length + ':' + jpeg.length + ':' + createHash('sha256').update(jpeg).digest('hex'));
+    chunks.forEach((part, index) => console.log('TSA_DOC_CHUNK:' + name + ':' + index + ':' + part));
+  }
+}
 
 async function serveCoachFixture(page: Page, name: string) {
   const fixture = JSON.parse(readFileSync(resolve('../sample_data/ui/' + name + '.json'), 'utf8'));
@@ -63,7 +78,7 @@ test('coach shows evidence and method in the native-sized viewport', async ({ pa
   await expect(page.getByRole('table', { name: 'Сравнение урона двух периодов' })).toContainText('Медиана урона');
   await expect(page.getByText(/Среднее и медиана изменились в разные стороны/)).toBeVisible();
   await mkdir('test-results', { recursive: true });
-  await page.screenshot({ path: 'test-results/hangar-coach.png', fullPage: true });
+  await captureDocumentation(page, 'coach');
   const explain = page.getByRole('button', { name: 'Как рассчитано' });
   await explain.click();
   await expect(page.getByRole('button', { name: 'Скрыть пояснение' })).toHaveAttribute('aria-expanded', 'true');
@@ -147,6 +162,7 @@ test('native-sized panel exposes sections and twelve history rows without wheel 
   await page.getByRole('button', { name: 'История боёв', exact: true }).click();
   await expect(page.getByTestId('history-page')).toHaveText('1 / 3');
   await expect(page.getByRole('row')).toHaveCount(6);
+  await captureDocumentation(page, 'history');
   await page.getByRole('button', { name: 'Следующая страница боёв' }).click();
   await expect(page.getByTestId('history-page')).toHaveText('2 / 3');
   await page.getByRole('button', { name: 'Следующая страница боёв' }).click();
@@ -167,6 +183,7 @@ test('live Python preview exposes raw damage chart and grouped summaries without
   await page.getByRole('button', { name: 'Динамика и цели', exact: true }).click();
   const bars = page.getByRole('group', { name: 'Урон отдельных боёв' }).getByRole('button');
   await expect(bars).toHaveCount(24);
+  await captureDocumentation(page, 'damage');
   await bars.first().click();
   await expect(page.getByTestId('damage-detail')).toContainText('Бой ' + data.insights.recent_damage[0].battle + ' ·');
   await page.getByRole('button', { name: 'Скользящее среднее', exact: true }).click();
@@ -176,6 +193,7 @@ test('live Python preview exposes raw damage chart and grouped summaries without
   await expect(page.getByRole('table', { name: 'Сводка результатов' })).toBeVisible();
   await page.getByRole('button', { name: 'По технике', exact: true }).click();
   await expect(page.getByRole('table', { name: 'Сводка результатов' })).toContainText('IS-7');
+  await captureDocumentation(page, 'summary');
   await page.getByRole('button', { name: 'По дням', exact: true }).click();
   await expect(page.getByRole('columnheader', { name: 'Дата получения' })).toBeVisible();
 });
