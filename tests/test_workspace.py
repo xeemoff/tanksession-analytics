@@ -160,6 +160,99 @@ class WorkspaceTests(unittest.TestCase):
         self.assertTrue(os.path.isfile(path + '.bak'))
         self.assertFalse(any(name.endswith('.tmp') for name in os.listdir(os.path.dirname(path))))
 
+    def test_windows_legacy_byte_paths_use_filesystem_encoding(self):
+        import ctypes
+
+        class LegacyWindowsOS(object):
+            name = 'nt'  # No os.replace, as on Windows Python 2.7.
+
+        class MoveFile(object):
+            def __init__(self):
+                self.calls = []
+
+            def __call__(self, source, destination, flags):
+                self.calls.append((source, destination))
+                return 1
+
+        class WindowsLibrary(object):
+            pass
+
+        move = MoveFile()
+        library = WindowsLibrary()
+        library.kernel32 = WindowsLibrary()
+        library.kernel32.MoveFileExW = move
+        original_os = module.os
+        original_encoding = sys.getfilesystemencoding
+        original_windll = getattr(ctypes, 'windll', None)
+        module.os = LegacyWindowsOS()
+        sys.getfilesystemencoding = lambda: 'cp1251'
+        ctypes.windll = library
+        try:
+            source = u'C:\\Игры\\Танки\\profiles\\.tsa-new.tmp'
+            destination = u'C:\\Игры\\Танки\\profiles\\profile.json'
+            module._replace(source.encode('cp1251'), destination.encode('cp1251'))
+            self.assertEqual(move.calls, [(source, destination)])
+            # Already-Unicode paths must cross the same boundary unchanged.
+            module._replace(source, destination)
+            self.assertEqual(move.calls[-1], (source, destination))
+            # An undecodable filename must fail instead of moving a different
+            # path that contains replacement characters.
+            with self.assertRaises(UnicodeDecodeError):
+                module._replace(b'C:\\bad-\x98.tmp', destination)
+            self.assertEqual(len(move.calls), 2)
+        finally:
+            module.os = original_os
+            sys.getfilesystemencoding = original_encoding
+            if original_windll is None:
+                del ctypes.windll
+            else:
+                ctypes.windll = original_windll
+
+    @unittest.skipUnless(os.name == 'nt', 'Exercises the real Windows MoveFileExW fallback')
+    def test_windows_legacy_replace_preserves_unicode_profile_and_backup(self):
+        # Windows CI normally takes os.replace, which Python 2.7 does not
+        # provide. Exercise the real Win32 fallback with Unicode paths and
+        # repeated replacements of both the profile and its existing backup.
+        original_replace = getattr(os, 'replace', None)
+        if original_replace is not None:
+            del os.replace
+        try:
+            folder = os.path.join(self.folder, u'Игры', u'Мир танков')
+            workspace = Workspace(folder)
+            rows = [record(1, vehicle=u'ИС-7')]
+            preferences = dict(DEFAULT_PREFERENCES, vehicle=u'ИС-7', window=30)
+            first = workspace.snapshot(rows, 'A', command('save_preferences',
+                request_id='win-first', preferences=preferences), now=1700000999)
+            self.assertEqual(first['workspace']['operation']['code'], 'preferences_saved')
+            path = workspace._path('A')
+            with open(path, 'rb') as stream:
+                first_bytes = stream.read()
+
+            goal = {'vehicle': u'ИС-7', 'window': 30, 'target_avg_damage': 1500}
+            second = workspace.snapshot(rows, 'A', command('save_goal',
+                request_id='win-second', goal=goal), now=1700000999)
+            self.assertEqual(second['workspace']['operation']['code'], 'goal_saved')
+            with open(path + '.bak', 'rb') as stream:
+                self.assertEqual(stream.read(), first_bytes)
+            with open(path, 'rb') as stream:
+                second_bytes = stream.read()
+
+            updated = dict(preferences, contrast='high')
+            third = workspace.snapshot(rows, 'A', command('save_preferences',
+                request_id='win-third', preferences=updated), now=1700000999)
+            self.assertEqual(third['workspace']['operation']['code'], 'preferences_saved')
+            with open(path + '.bak', 'rb') as stream:
+                self.assertEqual(stream.read(), second_bytes)
+            reopened = Workspace(folder).snapshot(rows, 'A', command('initialize'),
+                                                 now=1700000999)
+            self.assertEqual(reopened['workspace']['preferences'], updated)
+            self.assertEqual(reopened['workspace']['goals'], [goal])
+            self.assertFalse(any(name.endswith('.tmp') for name in
+                                 os.listdir(os.path.dirname(path))))
+        finally:
+            if original_replace is not None:
+                os.replace = original_replace
+
     def test_commands_reject_identity_paths_invalid_numbers_and_extra_fields(self):
         bad = [command('export_csv', path='../out.csv'), command('export_csv', account_id='B'),
                command(page=True), command(page=-1), command(page=1000001), command(action='unknown'),

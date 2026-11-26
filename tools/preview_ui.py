@@ -204,7 +204,21 @@ def create_ui_server(data_path, account_id, goals=None, demo=False,
     return server
 
 
+def _configure_cli_output():
+    """Keep Russian messages and Unicode paths intact in redirected output.
+
+    Windows pipes may otherwise use an ANSI code page which cannot encode the
+    help text. Configure the application, not its launcher's environment, and
+    leave in-memory text streams used by embedders alone.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, 'reconfigure', None)
+        if reconfigure is not None:
+            reconfigure(encoding='utf-8', errors='backslashreplace')
+
+
 def main(argv=None):
+    _configure_cli_output()
     parser = argparse.ArgumentParser(description='Просмотр нового интерфейса TankSession в браузере')
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument('--demo', action='store_true', help='Вымышленные демонстрационные бои')

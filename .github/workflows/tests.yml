@@ -143,6 +143,7 @@ jobs:
           "$PYTHON2" -m unittest discover -s tests -p test_workspace.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_insights.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_optional_metrics.py -v
+          "$PYTHON2" -m unittest discover -s tests -p test_recovery_limits.py -v
       - name: Build candidate and inspect structure
         shell: bash
         run: |

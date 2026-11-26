@@ -16,7 +16,15 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 function Get-TankSessionHash([string]$Path) {
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    # Windows PowerShell launched through another runtime can inherit a
+    # PowerShell Core PSModulePath where the Get-FileHash function is unavailable.
+    # Hash the file directly with the .NET runtime already required by this script.
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $hasher = [Security.Cryptography.SHA256]::Create()
+        try { return [BitConverter]::ToString($hasher.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() }
+        finally { $hasher.Dispose() }
+    } finally { $stream.Dispose() }
 }
 
 function Assert-TankSessionRegularPath([string]$Path) {

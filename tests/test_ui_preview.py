@@ -177,12 +177,56 @@ class UiPreviewConfigurationTests(unittest.TestCase):
             extracted = root / 'extracted'
             with zipfile.ZipFile(archive_path) as archive:
                 archive.extractall(extracted)
-            environment = dict(os.environ, PYTHONPATH='')
+            environment = dict(os.environ, PYTHONPATH='', PYTHONIOENCODING='cp1252:strict',
+                               PYTHONUTF8='0')
             result = subprocess.run([sys.executable, 'tools/preview_ui.py', '--help'], cwd=extracted,
                                     env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                     encoding='utf-8', timeout=15)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn('--allow-write', result.stdout)
+            self.assertIn('Просмотр нового интерфейса TankSession в браузере', result.stdout)
+            self.assertEqual(result.stderr, '')
+
+    def test_cli_errors_preserve_unicode_paths_with_non_unicode_pipe_encoding(self):
+        environment = dict(os.environ, PYTHONIOENCODING='cp1252:strict', PYTHONUTF8='0')
+        with tempfile.TemporaryDirectory() as folder:
+            missing_goals = str(Path(folder) / 'цели игрока 日本語.json')
+            cases = (
+                (['--data', 'unused.jsonl'], 2,
+                 '--data требует --account: история аккаунтов не объединяется'),
+                (['--demo', '--no-browser', '--goals', missing_goals], 1, repr(missing_goals)),
+            )
+            for arguments, expected_code, expected_message in cases:
+                with self.subTest(arguments=arguments):
+                    result = subprocess.run([sys.executable, str(ROOT / 'tools/preview_ui.py')]
+                                            + arguments, env=environment,
+                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                            encoding='utf-8', timeout=15)
+                    self.assertEqual(result.returncode, expected_code, result.stderr)
+                    self.assertIn(expected_message, result.stderr)
+                    self.assertNotIn('Traceback', result.stderr)
+                    self.assertNotIn('UnicodeEncodeError', result.stderr)
+
+    def test_startup_messages_use_utf8_with_non_unicode_pipe_encoding(self):
+        environment = dict(os.environ, PYTHONIOENCODING='cp1252:strict', PYTHONUTF8='0')
+        # Avoid opening a browser or holding a listening socket: the CLI still
+        # executes its real argument parsing and all normal startup messages.
+        script = """
+import sys
+from types import SimpleNamespace
+sys.path.insert(0, sys.argv[1])
+import preview_ui
+preview_ui.create_ui_server = lambda *args, **kwargs: SimpleNamespace(
+    server_port=8770, serve_forever=lambda: None, server_close=lambda: None)
+sys.exit(preview_ui.main(['--demo', '--no-browser']))
+"""
+        result = subprocess.run([sys.executable, '-c', script, str(ROOT / 'tools')],
+                                env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                encoding='utf-8', timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Интерфейс: http://127.0.0.1:8770/?demo=1', result.stdout)
+        self.assertIn('Для остановки нажмите Ctrl+C.', result.stdout)
+        self.assertEqual(result.stderr, '')
 
     def test_external_interface_is_rejected_before_any_bind(self):
         with self.assertRaisesRegex(ValueError, 'loopback'):

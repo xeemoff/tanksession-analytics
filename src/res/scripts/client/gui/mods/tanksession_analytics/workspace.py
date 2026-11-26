@@ -9,6 +9,7 @@ from __future__ import division
 import hashlib
 import json
 import os
+import sys
 import tempfile
 import time
 
@@ -108,7 +109,15 @@ def _replace(source, destination):
         move = ctypes.windll.kernel32.MoveFileExW
         move.argtypes = (wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD)
         move.restype = wintypes.BOOL
-        if not move(_as_text(source), _as_text(destination), 0x1 | 0x8):
+        # Python 2.7's Windows cwd/tempfile paths can be ANSI byte strings.
+        # Decode filesystem paths with their native codec, not the UTF-8
+        # payload decoder, which would silently replace Cyrillic characters.
+        encoding = sys.getfilesystemencoding() or 'utf-8'
+        if isinstance(source, bytes):
+            source = source.decode(encoding)
+        if isinstance(destination, bytes):
+            destination = destination.decode(encoding)
+        if not move(source, destination, 0x1 | 0x8):
             raise ctypes.WinError()
     else:
         os.rename(source, destination)

@@ -171,12 +171,18 @@ class WindowsInstallerTests(ReleaseFixture):
             self.installer, self.game, self.version if version is None else version))
         expression = (
             "$ErrorActionPreference='Stop'; "
+            "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false; "
             ". %s; %s; try { Install-TankSessionBundle %s %s | ConvertTo-Json -Compress; exit 0 } "
             "catch { Write-Output $_.Exception.Message; exit 1 }"
         ) % (self.quote(self.installer / 'Install-TankSession.ps1'), before or '$null = 0',
              args, '$true' if check_only else '$false')
         return subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
-                               '-Command', expression], capture_output=True, timeout=45)
+                               '-Command', expression], capture_output=True, text=True,
+                              encoding='utf-8', timeout=45)
+
+    def assert_rejected_for(self, result, reason):
+        self.assertNotEqual(result.returncode, 0, (result.stdout, result.stderr))
+        self.assertIn(reason, result.stdout, (result.stdout, result.stderr))
 
     def assert_private_data_untouched(self):
         self.assertEqual(self.config.read_bytes(), b'private-history-sentinel\n')
@@ -187,9 +193,23 @@ class WindowsInstallerTests(ReleaseFixture):
         self.assertEqual(result.returncode, 0, (result.stdout, result.stderr))
         self.assertTrue(self.old.exists())
         self.assertFalse((self.game / 'mods/tanksession_backups').exists())
-        for version in ('', '1.47.0.0', '../configs'):
+        for version, reason in (
+            ('', 'Укажите точную версию клиента'),
+            ('1.47.0.0', 'Этот пакет не предназначен для клиента'),
+            ('../configs', 'Укажите точную версию клиента'),
+        ):
             rejected = self.run_installer(version=version)
-            self.assertNotEqual(rejected.returncode, 0, rejected.stdout)
+            self.assert_rejected_for(rejected, reason)
+        self.assert_private_data_untouched()
+
+    def test_checksum_does_not_depend_on_get_file_hash_module(self):
+        result = self.run_installer(
+            before="function Get-FileHash { throw 'Get-FileHash is unavailable' }",
+            check_only=True)
+        self.assertEqual(result.returncode, 0, (result.stdout, result.stderr))
+        self.assertEqual(json.loads(result.stdout)['Status'], 'checked')
+        self.assertTrue(self.old.exists())
+        self.assertFalse((self.game / 'mods/tanksession_backups').exists())
         self.assert_private_data_untouched()
 
     def test_install_copies_new_and_preserves_old_in_verified_backup(self):
@@ -203,23 +223,33 @@ class WindowsInstallerTests(ReleaseFixture):
         self.assert_private_data_untouched()
 
     def test_bad_hash_does_not_touch_game(self):
-        (self.installer / self.package.name).write_bytes(b'broken')
+        package = self.installer / self.package.name
+        damaged = bytearray(package.read_bytes())
+        damaged[-1] ^= 1  # Keep the size valid so the SHA-256 check rejects it.
+        package.write_bytes(damaged)
         result = self.run_installer()
-        self.assertNotEqual(result.returncode, 0)
+        self.assert_rejected_for(result, 'SHA-256 пакета не совпадает')
         self.assertEqual(self.old.read_bytes(), b'previous-package-sentinel')
         self.assertFalse((self.game / 'mods/tanksession_backups').exists())
         self.assert_private_data_untouched()
 
     def test_failed_replacement_restores_old_package(self):
-        result = self.run_installer(before="function Move-Item { throw 'Simulated destination failure' }")
-        self.assertNotEqual(result.returncode, 0)
+        result = self.run_installer(before=(
+            "function Move-Item { "
+            "if (Test-Path -LiteralPath %s) { throw 'Old package was not removed' }; "
+            "throw 'Simulated destination failure' }" % self.quote(self.old)))
+        self.assert_rejected_for(result, 'Simulated destination failure')
         self.assertEqual(self.old.read_bytes(), b'previous-package-sentinel')
         self.assertFalse((self.destination / self.package.name).exists())
+        backups = list((self.game / 'mods/tanksession_backups').glob('*/' + self.old.name))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_bytes(), b'previous-package-sentinel')
+        self.assertEqual(list(self.destination.glob('.tanksession-*.pending')), [])
         self.assert_private_data_untouched()
 
     def test_running_game_prevents_changes(self):
         result = self.run_installer(before="function Get-Process { return [PSCustomObject]@{ ProcessName = 'WorldOfTanks' } }")
-        self.assertNotEqual(result.returncode, 0)
+        self.assert_rejected_for(result, 'Закройте клиент «Мира танков» перед установкой')
         self.assertEqual(self.old.read_bytes(), b'previous-package-sentinel')
         self.assertFalse((self.game / 'mods/tanksession_backups').exists())
         self.assert_private_data_untouched()
