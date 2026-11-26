@@ -107,7 +107,7 @@ jobs:
             echo 'A release already exists; its tag and assets will not be replaced.'
             exit 1
           fi
-          existing_commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha 2>/dev/null || true)
+          existing_commit=$(python tools/release_ref.py)
           if [ -n "$existing_commit" ] && [ "$existing_commit" != "$GITHUB_SHA" ]; then
             echo 'The existing tag points to another commit; publication stopped.'
             exit 1
