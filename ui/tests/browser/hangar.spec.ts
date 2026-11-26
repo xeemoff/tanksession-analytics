@@ -19,8 +19,10 @@ test('demo displays the Python snapshot and produces a review screenshot', async
   await expect(page.getByRole('heading', { name: 'TankSession' })).toBeVisible();
   await expect(page.getByText('DEMO · вымышленные данные', { exact: true })).toBeVisible();
   await expect(page.getByTestId('battle-count')).toHaveText(String(snapshot.summary.battles));
-  await expect(page.getByRole('table', { name: 'Последние бои' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Разбор прогресса' })).toBeVisible();
+  await page.getByRole('button', { name: 'История боёв', exact: true }).click();
+  await expect(page.getByRole('table', { name: 'Последние бои' })).toBeVisible();
+  await page.getByRole('button', { name: 'Прогресс', exact: true }).click();
   await expect(page.getByText('Выберите машину для личного сравнения')).toBeVisible();
   await mkdir('test-results', { recursive: true });
   await page.screenshot({ path: 'test-results/hangar-demo.png', fullPage: true });
@@ -132,4 +134,25 @@ test('Escape closes the preview and reopening reconnects', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Панель закрыта' })).toBeVisible();
   await page.getByRole('button', { name: 'Открыть снова' }).click();
   await expect(page.getByTestId('battle-count')).toBeVisible();
+});
+
+
+test('native-sized panel exposes sections and twelve history rows without wheel input', async ({ page }) => {
+  await page.setViewportSize({ width: 1120, height: 800 });
+  await page.goto('/?demo=1');
+  await expect(page.getByTestId('battle-count')).toBeVisible();
+  await page.getByRole('button', { name: 'Динамика и цели', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Динамика урона' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Личная цель' })).toBeVisible();
+  await page.getByRole('button', { name: 'История боёв', exact: true }).click();
+  await expect(page.getByTestId('history-page')).toHaveText('1 / 3');
+  await expect(page.getByRole('row')).toHaveCount(6);
+  await page.getByRole('button', { name: 'Следующая страница боёв' }).click();
+  await expect(page.getByTestId('history-page')).toHaveText('2 / 3');
+  await page.getByRole('button', { name: 'Следующая страница боёв' }).click();
+  await expect(page.getByTestId('history-page')).toHaveText('3 / 3');
+  await expect(page.getByRole('row')).toHaveCount(3);
+  await expect(page.getByRole('button', { name: 'Следующая страница боёв' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Прогресс', exact: true }).click();
+  await expect(page.getByTestId('coach-card')).toBeVisible();
 });

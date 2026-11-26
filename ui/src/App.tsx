@@ -3,6 +3,12 @@ import { createBridge } from './bridge';
 import { getMode, Goal, Mode, Selection, Snapshot, WindowSize } from './contracts';
 import { SnapshotController, ViewState } from './controller';
 import { CoachCard } from './Coach';
+import { vehicleLabel } from './vehicleLabel';
+type PanelSection = 'progress' | 'trend' | 'history';
+const SECTIONS: Array<{ id: PanelSection; label: string }> = [
+  { id: 'progress', label: 'Прогресс' }, { id: 'trend', label: 'Динамика и цели' }, { id: 'history', label: 'История боёв' }
+];
+const PAGE_SIZE = 5;
 
 export function formatNumber(value: number | null, digits = 0): string {
   if (value === null || !Number.isFinite(value)) return '—';
@@ -34,6 +40,9 @@ function VehiclePicker({ vehicles, selected, disabled, onSelect }: {
   vehicles: Snapshot['vehicles']; selected: string; disabled: boolean; onSelect: (vehicle: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [page, setPage] = useState(0);
+  const pages = Math.max(1, Math.ceil(vehicles.length / PAGE_SIZE));
+  const current = Math.min(page, pages - 1);
   const wrap = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -46,13 +55,18 @@ function VehiclePicker({ vehicles, selected, disabled, onSelect }: {
   return <div className="vehicle-picker" ref={wrap}>
     <span className="field-label">ТЕХНИКА</span>
     <button className="picker-trigger" type="button" aria-haspopup="listbox" aria-expanded={open}
-      aria-label="Выбрать танк" disabled={disabled} onClick={() => setOpen(!open)}>
-      <span>{selected || 'Вся техника'}</span><span className="chevron">⌄</span>
+      aria-label="Выбрать танк" disabled={disabled} onClick={() => { setPage(0); setOpen(!open); }}>
+      <span className="picker-label">{selected ? vehicleLabel(selected) : 'Вся техника'}</span><span className="chevron">v</span>
     </button>
     {open && <div className="picker-menu" role="listbox" aria-label="Техника">
       <button type="button" role="option" aria-selected={!selected} onClick={() => choose('')}>Вся техника</button>
-      {vehicles.map(vehicle => <button type="button" role="option" aria-selected={selected === vehicle.name}
-        key={vehicle.name} onClick={() => choose(vehicle.name)}><span>{vehicle.name}</span><span className="muted">{vehicle.battles}</span></button>)}
+      {vehicles.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE).map(vehicle => <button type="button" role="option" aria-selected={selected === vehicle.name}
+        key={vehicle.name} title={vehicle.name} onClick={() => choose(vehicle.name)}><span className="picker-label">{vehicleLabel(vehicle.name)}</span><span className="muted">{vehicle.battles}</span></button>)}
+      {pages > 1 && <div className="page-controls picker-pages">
+        <button type="button" aria-label="Предыдущая страница техники" disabled={current === 0} onClick={() => setPage(current - 1)}>Назад</button>
+        <span>{String(current + 1) + ' / ' + pages}</span>
+        <button type="button" aria-label="Следующая страница техники" disabled={current + 1 >= pages} onClick={() => setPage(current + 1)}>Далее</button>
+      </div>}
     </div>}
   </div>;
 }
@@ -113,7 +127,7 @@ function GoalCard({ goals, selected }: { goals: Goal[]; selected: string }) {
   const achieved = goal.status === 'achieved';
   return <section className="goal-card">
     <div className="section-heading"><h2>Личная цель</h2><span className="subtle-tag">{goal.window} БОЁВ</span></div>
-    <div className="goal-vehicle"><span className="target-symbol">◎</span><strong>{goal.vehicle}</strong></div>
+    <div className="goal-vehicle"><span className="target-symbol">◎</span><strong>{vehicleLabel(goal.vehicle)}</strong></div>
     <div className="goal-values"><strong>{formatNumber(goal.avg_damage)}</strong><span>/ {formatNumber(goal.target)}</span></div>
     <span className="small muted">средний урон за серию</span>
     <div className="progress-track" role="progressbar" aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100} aria-label="Прогресс среднего урона">
@@ -139,49 +153,57 @@ function Comparison({ snapshot }: { snapshot: Snapshot }) {
 }
 
 function BattleHistory({ history }: { history: Snapshot['history'] }) {
+  const [page, setPage] = useState(0);
+  const pages = Math.max(1, Math.ceil(history.length / PAGE_SIZE));
+  const current = Math.min(page, pages - 1);
   return <section className="history-section">
     <div className="section-heading"><h2>Последние бои</h2><span className="small muted">До 12 последних результатов</span></div>
     <div role="table" aria-label="Последние бои" className="history-table">
       <div role="row" className="history-row history-head"><span role="columnheader" className="col-time">Получен результат</span><span role="columnheader" className="col-vehicle">Техника</span><span role="columnheader" className="col-result">Исход</span><span role="columnheader" className="col-damage">Урон</span><span role="columnheader" className="col-xp" title="Значение из результата может учитывать бонусы; в разборе прогресса не используется.">Опыт из результата</span></div>
       <div className="history-scroll">
-        {history.map((battle, index) => <div role="row" className="history-row" key={battle.timestamp + ':' + index}>
+        {history.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE).map((battle, index) => <div role="row" className="history-row" key={battle.timestamp + ':' + index}>
           <span role="cell" className="col-time muted">{timeLabel(battle.timestamp)}</span>
-          <span role="cell" className="col-vehicle">{battle.vehicle}</span>
+          <span role="cell" className="col-vehicle" title={battle.vehicle}>{vehicleLabel(battle.vehicle)}</span>
           <span role="cell" className={'col-result result-' + (battle.outcome || 'unknown')}><span className="result-dot" />{outcomeLabel[battle.outcome || 'unknown'] || 'Неизвестно'}</span>
           <span role="cell" className="col-damage numeric">{formatNumber(battle.damage)}</span>
           <span role="cell" className="col-xp numeric muted">{formatNumber(battle.xp)}</span>
         </div>)}
       </div>
     </div>
+    <div className="page-controls history-pages">
+      <button type="button" aria-label="Предыдущая страница боёв" disabled={current === 0} onClick={() => setPage(current - 1)}>Назад</button>
+      <span data-testid="history-page">{String(current + 1) + ' / ' + pages}</span>
+      <button type="button" aria-label="Следующая страница боёв" disabled={current + 1 >= pages} onClick={() => setPage(current + 1)}>Далее</button>
+    </div>
   </section>;
 }
 
-export function SnapshotView({ snapshot, onSelectVehicle }: { snapshot: Snapshot; onSelectVehicle?: (vehicle: string) => void }) {
+export function SnapshotView({ snapshot, onSelectVehicle, section = 'all' }: { snapshot: Snapshot; onSelectVehicle?: (vehicle: string) => void; section?: PanelSection | 'all' }) {
   if (snapshot.status === 'account_unavailable') return <div className="empty-state" role="status"><span className="large-symbol">◎</span><h2>Аккаунт ещё не определён</h2><p>Данные появятся после входа в ангар. История других аккаунтов здесь не отображается.</p></div>;
   if (snapshot.status === 'empty') return <div className="empty-state" role="status"><span className="large-symbol">＋</span><h2>В этой выборке ещё нет боёв</h2><p>Завершите бой или выберите другую технику. История обновляется по полученным результатам.</p></div>;
   const summary = snapshot.summary;
   const quality = snapshot.quality;
   return <>
-    <div className="metrics-row">
+    {(section === 'all' || section === 'progress') && <><div className="metrics-row">
       <Metric label="БОЁВ В ВЫБОРКЕ" value={formatNumber(summary.battles)} detail="По выбранной технике" testId="battle-count" />
       <Metric label="ПОБЕДЫ" value={summary.win_rate === null ? '—' : formatNumber(summary.win_rate, 1) + '%'}
         detail={summary.wins + ' побед · ' + summary.known_outcomes + ' известных исходов'} testId="win-rate" />
       <Metric label="СРЕДНИЙ УРОН" value={formatNumber(summary.avg_damage)} detail={'Известен в ' + summary.damage_samples + ' из ' + summary.battles + ' боёв'} emphasis testId="average-damage" />
     </div>
-    {snapshot.coach && <CoachCard coach={snapshot.coach} latestVehicle={snapshot.history[0]?.vehicle} onSelectVehicle={onSelectVehicle} />}
-    <div className="analysis-row">
+    {snapshot.coach && <CoachCard coach={snapshot.coach} latestVehicle={snapshot.history[0]?.vehicle} onSelectVehicle={onSelectVehicle} />}</>}
+    {(section === 'all' || section === 'trend') && <div className="analysis-row">
       <section className="trend-card"><div className="section-heading"><h2>Динамика урона</h2><span className="subtle-tag">ОКНО {snapshot.selection.window}</span></div>
         <Trend series={snapshot.series} windowSize={snapshot.selection.window} />{snapshot.coach
           ? <p className="trend-note">Скользящее среднее: для точки нужен известный урон минимум в 70% боёв окна.</p>
           : <Comparison snapshot={snapshot} />}</section>
       <GoalCard goals={snapshot.goals} selected={snapshot.selection.vehicle} />
-    </div>
-    <BattleHistory history={snapshot.history} />
+    </div>}
+    {(section === 'all' || section === 'history') && <><BattleHistory history={snapshot.history} />
     <div className="quality-line"><span className="quality-icon">◈</span><span>
       {quality.incomplete_records === 0 ? 'Основные показатели всех боёв известны.' : 'Неполных результатов: ' + quality.incomplete_records + '. Пропуски не считаются нулём.'}
       {quality.invalid_records > 0 ? ' Отклонённых записей: ' + quality.invalid_records + '.' : ''}
       {quality.conflicts > 0 ? ' Конфликтов: ' + quality.conflicts + '.' : ''}
-    </span></div>
+    </span></div></>}
   </>;
 }
 
@@ -189,6 +211,7 @@ export default function App() {
   const mode = getMode(window.location.search);
   const [state, setState] = useState<ViewState>({ phase: 'connecting', snapshot: null, selection: { vehicle: '', window: 10 }, message: '' });
   const [generation, setGeneration] = useState(0);
+  const [section, setSection] = useState<PanelSection>('progress');
   const control = useRef<SnapshotController | null>(null);
   const vehicles = useRef<Snapshot['vehicles']>([]);
   useEffect(() => {
@@ -217,14 +240,17 @@ export default function App() {
     {mode !== 'gameface' && <button className="primary-button" type="button" onClick={() => { vehicles.current = []; setGeneration(generation + 1); }}>Открыть снова</button>}</div></main>;
   return <main className="page"><div className="panel" aria-busy={busy}>
     <header className="panel-header"><div className="brand"><span className="brand-mark">TS</span><div><h1>TankSession<span className="brand-sub">ANALYTICS</span></h1><p>История боёв и личный прогресс</p></div></div>
-      <div className="header-actions"><SourceBadge mode={mode} /><button type="button" className="icon-button refresh" aria-label="Обновить статистику" disabled={inactive || busy} onClick={() => control.current?.request()}>↻</button>
+      <div className="header-actions"><SourceBadge mode={mode} /><button type="button" className="icon-button refresh" aria-label="Обновить статистику" disabled={inactive || busy} onClick={() => control.current?.request()}>Обновить</button>
         <button type="button" className="icon-button close" aria-label="Закрыть панель" onClick={() => control.current?.close()}>×</button></div></header>
     <div className="panel-content"><div className="toolbar"><VehiclePicker vehicles={vehicles.current} selected={state.selection.vehicle} disabled={inactive} onSelect={vehicle => choose({ ...state.selection, vehicle })} />
       <div className="period-control"><span className="field-label">ПЕРИОД СРАВНЕНИЯ</span><div className="period-buttons" role="group" aria-label="Размер периода">
         {([10, 30, 100] as WindowSize[]).map(size => <button key={size} type="button" aria-label={size + ' боёв'} aria-pressed={state.selection.window === size} disabled={inactive}
-          className={state.selection.window === size ? 'active' : ''} onClick={() => choose({ ...state.selection, window: size })}>{size}<span>боёв</span></button>)}
+          className={state.selection.window === size ? 'active' : ''} onClick={() => choose({ ...state.selection, window: size })}>{size + ' боёв'}</button>)}
       </div></div><span className="local-note"><span className="status-dot" />Данные на вашем компьютере</span></div>
-      {state.phase === 'ready' && state.snapshot ? <SnapshotView snapshot={state.snapshot} onSelectVehicle={vehicle => choose({ ...state.selection, vehicle })} /> : state.phase === 'error' ? <div className="empty-state error-state" role="alert">
+      <div className="section-tabs" role="group" aria-label="Разделы статистики">
+        {SECTIONS.map(item => <button type="button" key={item.id} aria-pressed={section === item.id} className={section === item.id ? 'active' : ''} disabled={inactive} onClick={() => setSection(item.id)}>{item.label}</button>)}
+      </div>
+      {state.phase === 'ready' && state.snapshot ? <SnapshotView snapshot={state.snapshot} section={section} onSelectVehicle={vehicle => choose({ ...state.selection, vehicle })} /> : state.phase === 'error' ? <div className="empty-state error-state" role="alert">
         <span className="large-symbol">!</span><h2>Данные сейчас недоступны</h2><p>{state.message}</p><button className="primary-button" type="button" onClick={() => setGeneration(generation + 1)}>Повторить подключение</button>
       </div> : <div className="empty-state loading-state" role="status"><span className="loading-bar" /><h2>{state.phase === 'connecting' ? 'Подключаем панель' : 'Обновляем статистику'}</h2><p>Показатели появятся после получения данных.</p></div>}
     </div>

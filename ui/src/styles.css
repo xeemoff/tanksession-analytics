@@ -206,3 +206,43 @@ h2 { display: flex; flex-direction: row; color: #dfe7d8; font-size: 15px; line-h
   .coach-coverage { flex-direction: column; }
   .coach-coverage > span + span { margin-left: 0; }
 }
+
+/* Explicit navigation for the native view; no wheel needed for the main sections. */
+.section-tabs { display: flex; flex-direction: row; flex-shrink: 0; margin-bottom: 14px; }
+.section-tabs button { display: flex; flex-direction: row; align-items: center; justify-content: center; flex: 1 1 0; height: 36px; color: #d5dfce; font-size: 14px; font-weight: 600; }
+.section-tabs button + button { margin-left: 8px; }
+.section-tabs button.active { color: #f1d394; background: #4b4630; border-color: #84734c; }
+.picker-trigger, .picker-menu button, .picker-label { color: #e2e8d9; }
+.picker-menu { max-height: none; overflow-y: visible; }
+.picker-menu button .muted { color: #afbea6; }
+.page-controls { display: flex; flex-direction: row; flex-shrink: 0; align-items: center; justify-content: center; margin-top: 10px; }
+.page-controls button { display: block; flex: 0 0 auto; color: #e2e8d9; padding: 8px 14px; font-size: 13px; }
+.page-controls > span { display: block; color: #b9c6b1; font-size: 13px; margin: 0 14px; }
+.picker-pages { margin: 4px 0; }
+.picker-pages button { padding: 7px; }
+.history-scroll { max-height: none; overflow-y: visible; }
+.history-row { min-height: 38px; font-size: 14px; }
+.history-head, .col-time { font-size: 12px; }
+.col-xp { width: 15%; }
+.icon-button.refresh { width: 92px; font-size: 13px; color: #d7e1cf; }
+.coach-count { display: flex; flex-direction: row; align-items: center; margin-top: 7px; }
+.coach-count > span { display: block; color: #d0d9bf; font-size: 13px; }
+.coach-count > strong { display: block; color: #ead2a2; font-size: 19px; margin: 0 8px; }
+.coach-wait > strong, .coach-choose strong { font-size: 15px; }
+.coach-record-label, .coach-scope, .coach-explain-button, .coach-coverage, .coach-evidence, .coach-record p, .coach-foot p, .coach-explanation p { font-size: 13px; line-height: 19px; }
+.coach-card { margin-bottom: 8px; padding-top: 13px; padding-bottom: 10px; }
+.coach-records { margin-top: 10px; padding-top: 9px; }
+.coach-foot { margin-top: 8px; }
+.coach-comparison-row { min-height: 28px; font-size: 13px; }
+.coach-comparison-row > span, .coach-comparison-row > strong { padding-top: 4px; padding-bottom: 4px; }
+.coach-comparison, .coach-verdict { margin-top: 8px; }
+.toolbar, .metrics-row { margin-bottom: 12px; }
+.metric-card { padding-top: 11px; padding-bottom: 10px; }
+.metric-detail, .field-label, .source-badge { font-size: 12px; }
+.panel-header { padding-top: 15px; padding-bottom: 15px; }
+.panel-content { padding-top: 14px; }
+@media (max-width: 720px) {
+  .section-tabs button, .picker-pages button { font-size: 11px; }
+  .coach-count { flex-wrap: wrap; }
+  .coach-count > span:last-child { flex: 1 1 auto; }
+}
