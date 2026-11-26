@@ -1,4 +1,4 @@
-# Интеграция с клиентом — 0.4.0-rc8
+# Интеграция с клиентом — 0.4.0-rc9
 
 **Реальный клиент испытан частично (rc4–rc6).** Порядок запуска: [CHECK_CLIENT_RU.md](CHECK_CLIENT_RU.md). Факты испытания: [CLIENT_VALIDATION_RU.md](CLIENT_VALIDATION_RU.md). Инженерная модель: [ARCHITECTURE_RU.md](ARCHITECTURE_RU.md).
 

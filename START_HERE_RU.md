@@ -1,8 +1,8 @@
-# Быстрый старт — TankSession Analytics 0.4.0-rc8
+# Быстрый старт — TankSession Analytics 0.4.0-rc9
 
 ## Посмотреть новый экран
 
-В успешном запуске [GitHub Actions](https://github.com/xeemoff/tanksession-analytics/actions/workflows/tests.yml) скачай artifact `tanksession-hangar-preview-...`, затем распакуй вложенный `TankSession_Analytics_0.4.0-rc8_Preview.zip`. Нужны Python 3.9+ и браузер. Запусти **demo_hangar.cmd** или:
+В успешном запуске [GitHub Actions](https://github.com/xeemoff/tanksession-analytics/actions/workflows/tests.yml) скачай artifact `tanksession-hangar-preview-...`, затем распакуй вложенный `TankSession_Analytics_0.4.0-rc9_Preview.zip`. Нужны Python 3.9+ и браузер. Запусти **demo_hangar.cmd** или:
 
 ```powershell
 python tools/preview_ui.py --demo
@@ -70,7 +70,7 @@ python tools/benchmark.py --battles 100000
 
 ## Проверить мод в игре
 
-**В rc4 подтверждён сбор реального боя, в rc5 — открытие Gameface и интерактивные фильтры.** В rc6 подтверждён доступ к трём вкладкам; rc7 с изменениями размещения требует отдельного испытания; см. [протокол](docs/CLIENT_VALIDATION_RU.md).
+**В rc4 подтверждён сбор реального боя, в rc5 — открытие Gameface и интерактивные фильтры.** В rc6 подтверждён доступ к трём вкладкам; в rc8 подтверждено центрирование и сбор нового боя; rc9 с новыми сводками требует игрового испытания; см. [протокол](docs/CLIENT_VALIDATION_RU.md).
 
 Используй [пошаговый тест-план](docs/CHECK_CLIENT_RU.md) и [протокол совместимости](docs/CLIENT_VALIDATION_RU.md). Артефакт успешной CI-сборки содержит пакет и SHA-256. Локальная сборка требует отдельного CPython 2.7 и предварительно собранного интерфейса `ui/dist`:
 
@@ -78,7 +78,7 @@ python tools/benchmark.py --battles 100000
 python tools/build.py --python2 "C:\Python27\python.exe"
 ```
 
-Пакет создаётся в `dist/ru.tanksession.analytics_0.4.0-rc8.mtmod`. Автоматической установки нет. Восстановление через игровой кэш остаётся выключенным до проверки его API.
+Пакет создаётся в `dist/ru.tanksession.analytics_0.4.0-rc9.mtmod`. Автоматической установки нет. Восстановление через игровой кэш остаётся выключенным до проверки его API.
 
 Для обсуждения неисправностей достаточно версии клиента, описания сценария и обезличенных счётчиков:
 
