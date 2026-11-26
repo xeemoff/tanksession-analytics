@@ -203,6 +203,37 @@ class ControllerTests(unittest.TestCase):
         self.runtime.run(self.controller._request_timer)
         self.assertEqual(window.payloads[-1]['request_id'], 'ui-2')
 
+    def test_mutations_are_not_coalesced_or_replayed_by_refresh(self):
+        window = self.open()
+        window.on_request(request('view-1', window=30))
+        self.runtime.run(self.controller._request_timer)
+        self.controller.refresh()
+        window.on_request(request('command-2', action='export_csv', window=30))
+        window.on_request(request('command-3', action='save_goal', window=30,
+                                 goal={'vehicle': 'Tank', 'window': 10, 'target_avg_damage': 1000}))
+        self.controller.refresh()
+        self.runtime.run(self.controller._request_timer)
+        self.runtime.run(self.controller._request_timer)
+        self.assertEqual([value.get('action') for account, value in self.calls],
+                         [None, None, 'export_csv', 'save_goal'])
+        self.assertEqual(window.payloads[-1]['request_id'], 'command-3')
+        self.controller.refresh()
+        self.runtime.run(self.controller._request_timer)
+        self.assertEqual(window.payloads[-1]['request_id'], 'command-3')
+        self.assertNotIn('action', self.calls[-1][1])
+        self.assertNotIn('goal', self.calls[-1][1])
+
+    def test_reentrant_refresh_uses_completed_command_id_without_repeating_write(self):
+        window = self.open()
+        window.on_request(request('export-1', action='export_csv'))
+        self.provider_hook = self.controller.refresh
+        self.runtime.run(self.controller._request_timer)
+        self.provider_hook = None
+        self.runtime.run(self.controller._request_timer)
+        self.assertEqual(self.calls[-2][1]['action'], 'export_csv')
+        self.assertNotIn('action', self.calls[-1][1])
+        self.assertEqual(window.payloads[-1]['request_id'], 'export-1')
+
     def test_invalid_request_does_not_read_data_or_log_payload(self):
         window = self.open()
         for unused in range(3):

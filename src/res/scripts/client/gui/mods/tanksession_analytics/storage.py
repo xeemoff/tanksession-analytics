@@ -4,6 +4,7 @@ import json
 import os
 
 from .core import _arena_id, _as_text, _non_negative_int, validate_record, record_is_complete
+from .vehicles import normalize_vehicle_id, revision_identity
 
 _MAX_LINE_BYTES = 262144
 
@@ -211,8 +212,17 @@ class BattleStore(object):
     def _merge(previous, incoming):
         merged = dict(previous)
         changed = False
+        try:
+            vehicle_id, labels_linked = revision_identity(previous, incoming)
+        except ValueError:
+            return 'conflict', previous
+        if vehicle_id is not None and vehicle_id != previous.get('vehicle_id'):
+            merged['vehicle_id'] = vehicle_id
+            changed = True
         for name in ('vehicle', 'mode', 'outcome', 'damage', 'xp',
-                     'assistance_radio', 'assistance_track'):
+                     'assistance_radio', 'assistance_track', 'map', 'kills',
+                     'survived', 'shots', 'direct_hits', 'penetrations',
+                     'xp_base', 'xp_bonus', 'credits_gross', 'credits_net'):
             old, new = previous.get(name), incoming.get(name)
             old_missing = old is None or old == 'unknown'
             new_missing = new is None or new == 'unknown'
@@ -222,6 +232,10 @@ class BattleStore(object):
                 merged[name] = new
                 changed = True
             elif old != new:
+                if name == 'vehicle' and labels_linked:
+                    # A type identity can survive localization/renaming. Keep
+                    # the first display label and every known numeric value.
+                    continue
                 return 'conflict', previous
         if previous.get('timestamp') is None and incoming.get('timestamp') is not None:
             merged['timestamp'] = incoming['timestamp']
@@ -275,6 +289,9 @@ class PendingJournal(object):
             value = context.get(name)
             if value is not None:
                 safe[name] = _as_text(value)
+        vehicle_id = normalize_vehicle_id(context.get('vehicle_id'))
+        if vehicle_id is not None:
+            safe['vehicle_id'] = vehicle_id
         item = {'event': 'start', 'arena_id': arena, 'timestamp': int(timestamp),
                 'context': safe}
         _durable_append(self.path, item)

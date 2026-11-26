@@ -12,6 +12,7 @@ import weakref
 
 from .presentation import validate_request
 from .recorder import _verified_account
+from .workspace import MUTATIONS
 
 try:
     _text_types = (str, unicode)
@@ -295,6 +296,9 @@ class GamefaceController(object):
         self._request_timer = None
         self._watch_timer = None
         self._queued_request = None
+        self._queued_commands = []
+        self._delivering = False
+        self._refresh_after_delivery = False
         self._last_request = None
         self._reported = set()
 
@@ -414,6 +418,14 @@ class GamefaceController(object):
             if (not isinstance(snapshot, dict) or snapshot.get('source') != 'game'
                     or snapshot.get('request_id') != request['request_id']):
                 raise ValueError('Invalid snapshot envelope')
+            # Initialization may restore the account's saved filters. Future
+            # unsolicited updates must retain those filters and must not
+            # replay the initialization command.
+            selection = snapshot.get('selection')
+            if isinstance(selection, dict):
+                for key in ('vehicle', 'window', 'page'):
+                    if key in selection:
+                        request[key] = selection[key]
             payload = json.dumps(snapshot, ensure_ascii=True, allow_nan=False,
                                  separators=(',', ':'))
             if len(payload) > MAX_PAYLOAD_CHARS:
@@ -449,8 +461,20 @@ class GamefaceController(object):
             self._report('request', 'invalid UI request rejected', error)
 
     def _queue(self, request, generation):
-        self._queued_request = request
-        if self._request_timer is None:
+        if request is None:
+            return
+        if request.get('action') in MUTATIONS:
+            # View requests can be coalesced. Explicit user writes cannot:
+            # keep their order and bound memory if an invalid UI floods us.
+            if len(self._queued_commands) >= 16:
+                raise ValueError('UI command queue is full')
+            self._queued_commands.append(request)
+            # The command also asks for a current snapshot. An older passive
+            # refresh must not overwrite its request ID after it completes.
+            self._queued_request = None
+        else:
+            self._queued_request = request
+        if self._request_timer is None and not self._delivering:
             try:
                 self._request_timer = self._runtime.schedule(
                     REQUEST_DELAY, lambda: self._deliver(generation))
@@ -462,12 +486,16 @@ class GamefaceController(object):
         if generation != self._generation:
             return
         self._request_timer = None
-        request, self._queued_request = self._queued_request, None
+        if self._queued_commands:
+            request = self._queued_commands.pop(0)
+        else:
+            request, self._queued_request = self._queued_request, None
         if not self._authorized(generation):
             self.close()
             return
         if request is None:
             return
+        self._delivering = True
         try:
             payload = self._encode_snapshot(self._account, request)
             # A provider can re-enter game code; recheck before crossing into JS.
@@ -475,7 +503,8 @@ class GamefaceController(object):
                 self.close()
                 return
             self._window.publish(payload)
-            self._last_request = request
+            self._last_request = dict((key, value) for key, value in request.items()
+                                      if key not in ('action', 'preferences', 'goal'))
             # JS requests its first snapshot after resizeViewPx. Positioning is
             # cosmetic and must not close or invalidate a working window.
             center = getattr(self._window, 'center_once', None)
@@ -488,12 +517,31 @@ class GamefaceController(object):
         except Exception as error:
             self._report('snapshot', 'snapshot delivery failed; window closed', error)
             self.close()
+        finally:
+            self._delivering = False
+        if self._refresh_after_delivery:
+            self._refresh_after_delivery = False
+            if not self._queued_commands and self._queued_request is None:
+                self._queued_request = self._last_request
+        if self._authorized(generation) and (self._queued_commands or self._queued_request):
+            try:
+                self._request_timer = self._runtime.schedule(
+                    REQUEST_DELAY, lambda: self._deliver(generation))
+            except Exception as error:
+                self._report('schedule', 'UI callback scheduling unavailable', error)
+                self.close()
 
     def refresh(self):
         generation = self._generation
         if not self._authorized(generation):
             if self._window is not None:
                 self.close()
+            return
+        if self._delivering:
+            self._refresh_after_delivery = True
+            return
+        if self._queued_commands:
+            # Each pending command will render the latest journal itself.
             return
         # Preserve a newer filter request and its ID if results arrived while
         # that request was waiting. Unsolicited updates reuse the current ID.
@@ -523,6 +571,8 @@ class GamefaceController(object):
         self._generation += 1
         window, self._window = self._window, None
         self._account = self._queued_request = self._last_request = None
+        self._queued_commands = []
+        self._refresh_after_delivery = False
         for name in ('_request_timer', '_watch_timer'):
             timer = getattr(self, name)
             setattr(self, name, None)

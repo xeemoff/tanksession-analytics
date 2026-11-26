@@ -25,9 +25,10 @@ from tanksession_analytics.goals import evaluate_goals, validate_goals
 from tanksession_analytics.core import summarize, by_day, _non_negative_int, validate_record
 from tanksession_analytics.analytics import (record_date, select_records,
     vehicle_table, window_comparison, rolling_damage, safe_window, valid_date)
+from tanksession_analytics.vehicles import resolve_selector, selector_for
 
 
-CSV_FIELDS = ('arena_id', 'account_id', 'timestamp', 'date', 'vehicle', 'mode',
+CSV_FIELDS = ('arena_id', 'account_id', 'timestamp', 'date', 'vehicle', 'vehicle_id', 'mode',
               'outcome', 'damage', 'assistance_radio', 'assistance_track', 'xp')
 
 
@@ -162,7 +163,10 @@ def rolling_chart(records, window):
              left, min_x, right, max_x, ''.join(segments)))
 
 
-def comparison_html(records, window):
+def comparison_html(records, window, vehicle_filter=''):
+    if vehicle_filter and any(row.get('_vehicle_ambiguous') for row in records):
+        return ('<p class="hint">Название связано с разной техникой. Для сравнения '
+                'выберите машину с подтверждённым идентификатором. Старая история сохранена.</p>')
     c = window_comparison(records, window)
     current, previous = c['current'], c['previous']
     if not c['enough_current']:
@@ -182,13 +186,47 @@ def comparison_html(records, window):
             (left, right, current['known_outcomes'], window, previous['known_outcomes'], window))
 
 
+def vehicle_labels(records):
+    """Separate source captions from selectors in already scoped raw copies."""
+    labels = {}
+    for row in records:
+        label = row.get('vehicle') or 'unknown'
+        if label != 'unknown':
+            labels.setdefault(selector_for(row), label)
+    duplicates = {}
+    for selector, label in labels.items():
+        duplicates.setdefault(label, []).append(selector)
+    for selector, label in list(labels.items()):
+        if len(duplicates[label]) > 1:
+            if selector.startswith('type:'):
+                suffix = ' · #' + selector[5:]
+            elif selector.startswith('name:'):
+                suffix = ' · ' + selector[5:]
+            else:
+                suffix = ' · старая запись'
+            labels[selector] = label[:128 - len(suffix)] + suffix
+    return labels
+
+
+def vehicle_caption(selector, labels):
+    if selector in labels:
+        return labels[selector]
+    if selector.startswith('type:'):
+        return 'Техника #' + selector[5:]
+    if selector.startswith('name:'):
+        return selector[5:]
+    return 'Неизвестная техника' if selector == 'unknown' else selector
+
+
 def vehicle_html(records):
-    entries = vehicle_table(records)
+    scoped = select_records(records)
+    entries = vehicle_table(scoped)
+    labels = vehicle_labels(scoped)
     rows = []
     for name, s in entries:
         rows.append('<tr><td>%s</td><td class="num">%d</td><td class="num">%s</td>'
                     '<td class="num">%s</td><td class="num">%d/%d</td></tr>' %
-                    (escape(name), s['battles'], escape(fmt(s['win_rate'], '%')),
+                    (escape(vehicle_caption(name, labels)), s['battles'], escape(fmt(s['win_rate'], '%')),
                      escape(fmt(s['avg_damage'])), s['damage_samples'], s['battles']))
     if not rows:
         rows.append('<tr><td colspan="5" class="hint">По выбранным фильтрам нет боёв.</td></tr>')
@@ -217,13 +255,21 @@ def goals_html(records, goals, account_filter=''):
     labels = {'no_data': 'Нет боёв по выбранным фильтрам',
               'in_progress': 'Нужно больше боёв',
               'insufficient_data': 'Недостаточно известных значений урона',
+              'identity_ambiguous': 'Техника не определена однозначно',
               'achieved': 'Цель достигнута', 'not_achieved': 'Цель пока не достигнута'}
     rows = []
+    scopes = {}
     for item in evaluate_goals(records, goals, account_id=account_filter):
+        owner = item['account_id']
+        if owner not in scopes:
+            scoped = select_records(records, account=owner) if owner else []
+            scopes[owner] = (scoped, vehicle_labels(scoped))
+        scoped, captions = scopes[owner]
+        selector = resolve_selector(item['vehicle'], scoped)
         rows.append('<tr><td>%s</td><td>%s</td><td class="num">%d</td>'
                     '<td class="num">%d/%d</td><td class="num">%d/%d</td>'
                     '<td class="num">%s</td><td>%s</td></tr>' % (
-                        escape(item['account_id'] or '—'), escape(item['vehicle']),
+                        escape(item['account_id'] or '—'), escape(vehicle_caption(selector, captions)),
                         item['target'], item['battles'], item['window'],
                         item['known_damage'], item['battles'],
                         escape(fmt(item['avg_damage'])), escape(labels[item['status']])))
@@ -288,7 +334,14 @@ def render(records, vehicle_filter='', from_day='', to_day='', source_label='',
     diagnostics['invalid'] = diagnostics.get('invalid', 0) + rejected
     window = safe_window(window)
     from_day, to_day = valid_date(from_day), valid_date(to_day)
-    vehicles = sorted(set(str(r.get('vehicle') or 'unknown') for r in records if isinstance(r, dict)))
+    scoped = select_records(records, account=account_filter)
+    captions = vehicle_labels(scoped)
+    vehicles = sorted(set(selector_for(row) for row in scoped))
+    # A mixed-account collection intentionally cannot infer a shared alias.
+    # Preserve a legacy query in that case; new options submit exact selectors.
+    vehicle_filter = resolve_selector(vehicle_filter, scoped)
+    if vehicle_filter and vehicle_filter not in vehicles:
+        vehicles.append(vehicle_filter)
     accounts = sorted(set(str(r.get('account_id') or 'local') for r in records if isinstance(r, dict)))
     selected = select_records(records, vehicle_filter, account_filter, from_day, to_day)
     totals = summarize(selected)
@@ -297,7 +350,8 @@ def render(records, vehicle_filter='', from_day='', to_day='', source_label='',
     opts = ['<option value="">Все танки</option>']
     for name in vehicles:
         opts.append('<option value="%s"%s>%s</option>' %
-                    (escape(name), ' selected' if name == vehicle_filter else '', escape(name)))
+                    (escape(name), ' selected' if name == vehicle_filter else '',
+                     escape(vehicle_caption(name, captions))))
     account_opts = ['<option value="">Все аккаунты</option>']
     for name in accounts:
         account_opts.append('<option value="%s"%s>%s</option>' %
@@ -351,7 +405,7 @@ $source_status
 <section class="panel"><h2>Сравнение двух последовательных периодов</h2>$comparison</section>
 <section class="panel"><h2>Скользящий средний урон</h2><p class="hint">Последние 80 точек, окно — $window боёв. Пробелы означают недостаток данных, а не нулевой урон.</p><div class="scroll">$rolling</div></section>
 <section class="panel"><h2>Средний урон по дням</h2><div class="scroll">$daily</div></section>
-<section class="panel"><h2>Персональные цели</h2><p class="hint">Каждый аккаунт оценивается отдельно. Учитываются текущие фильтры. Нужны полное окно и известный урон минимум в 70% боёв; достижение проверяется до округления.</p>$goals</section>
+<section class="panel"><h2>Персональные цели</h2><p class="hint">Каждый аккаунт оценивается отдельно. Учитываются текущие фильтры. Нужны полное окно и известный урон во всех боях; достижение проверяется до округления.</p>$goals</section>
 <section class="panel"><h2>Эффективность по танкам</h2><p class="hint">Сортировка по числу сыгранных боёв; прочерк означает отсутствие подтверждённой метрики.</p>
 <div class="scroll"><table><thead><tr><th>Техника</th><th class="num">Боёв</th><th class="num">Победы</th><th class="num">Средний урон</th><th class="num">Есть урон</th></tr></thead><tbody>$vehicles_table</tbody></table></div></section>
 <section class="panel"><h2>Последние 150 боёв</h2><div class="scroll"><table><thead><tr><th>Дата</th><th>Танк</th><th>Исход</th><th class="num">Урон</th><th class="num">Опыт</th></tr></thead><tbody>$battles</tbody></table></div></section>
@@ -359,7 +413,7 @@ $source_status
 </main></body></html>''').substitute(
         accounts=''.join(account_opts), vehicles=''.join(opts), windows=''.join(wopts),
         from_day=escape(from_day), to_day=escape(to_day), query=escape(query),
-        cards=cards, comparison=comparison_html(selected, window), window=window,
+        cards=cards, comparison=comparison_html(selected, window, vehicle_filter), window=window,
         goals=goals_html(selected, goals or [], account_filter),
         daily=daily_chart(selected), rolling=rolling_chart(selected, window),
         vehicles_table=vehicle_html(selected), battles=battle_html(selected),
@@ -390,7 +444,7 @@ def export_csv(records, vehicle_filter='', from_day='', to_day='',
         row = []
         for field in CSV_FIELDS:
             raw = record_date(record) if field == 'date' else record.get(field)
-            if field in ('arena_id', 'account_id', 'vehicle', 'mode', 'outcome'):
+            if field in ('arena_id', 'account_id', 'vehicle', 'vehicle_id', 'mode', 'outcome'):
                 row.append(_csv_safe(raw))
             elif field == 'date':
                 row.append(raw or '')

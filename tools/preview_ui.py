@@ -9,6 +9,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlsplit
@@ -17,6 +18,8 @@ from dashboard import ROOT, CachedJournal, load_goals
 from tanksession_analytics.goals import validate_goals
 from tanksession_analytics.presentation import build_snapshot, validate_request
 from tanksession_analytics.recorder import _verified_account
+from tanksession_analytics.workspace import Workspace, MUTATIONS
+from tanksession_analytics.gameface import decode_request
 
 ASSETS = {
     '/': ('index.html', 'text/html; charset=utf-8'),
@@ -28,8 +31,8 @@ ASSETS = {
 
 
 def create_ui_server(data_path, account_id, goals=None, demo=False,
-                     port=8770, assets_dir=None, host='127.0.0.1'):
-    """Return an unstarted, read-only server owned by the caller."""
+                     port=8770, assets_dir=None, host='127.0.0.1', allow_write=False):
+    """Return an unstarted loopback server; real writes require explicit opt-in."""
     if host not in ('127.0.0.1', 'localhost'):
         raise ValueError('Only loopback is supported')
     if isinstance(port, bool) or not isinstance(port, int) or not 0 <= port <= 65535:
@@ -50,6 +53,10 @@ def create_ui_server(data_path, account_id, goals=None, demo=False,
         assets[filename] = data
     journal = CachedJournal(os.path.abspath(data_path))
     goals = validate_goals([] if goals is None else goals)
+    temporary = tempfile.TemporaryDirectory(prefix='tanksession-demo-') if demo else None
+    workspace = Workspace(temporary.name if temporary else os.path.dirname(os.path.abspath(data_path)),
+                          memory=demo)
+    writable = demo or allow_write
 
     class Handler(BaseHTTPRequestHandler):
         def setup(self):
@@ -81,7 +88,7 @@ def create_ui_server(data_path, account_id, goals=None, demo=False,
                               separators=(',', ':')).encode('utf-8')
             self.respond(status, data, 'application/json; charset=utf-8')
 
-        def do_GET(self):
+        def valid_origin(self):
             hosts = ('127.0.0.1:%d' % self.server.server_port,
                      'localhost:%d' % self.server.server_port)
             host = self.headers.get('Host', '')
@@ -90,6 +97,55 @@ def create_ui_server(data_path, account_id, goals=None, demo=False,
                     (origin is not None and origin != 'http://' + host) or
                     self.headers.get('Sec-Fetch-Site') == 'cross-site'):
                 self.json_response(403, {'error': 'origin_rejected'})
+                return False
+            return True
+
+        def snapshot_response(self, request):
+            records = journal.records()
+            if journal.state in ('missing', 'unreadable'):
+                self.json_response(503, {'error': 'journal_unavailable'})
+                return
+            try:
+                snapshot = workspace.snapshot(records, account, request=request,
+                                               legacy_goals=goals, diagnostics=journal.diagnostics,
+                                               source='demo' if demo else 'game')
+                snapshot['workspace']['can_edit'] = writable and snapshot['workspace']['can_edit']
+            except (ValueError, TypeError, OverflowError, UnicodeError):
+                self.json_response(503, {'error': 'snapshot_unavailable'})
+                return
+            self.json_response(200, snapshot)
+
+        def do_POST(self):
+            if not self.valid_origin():
+                return
+            if self.path != '/api/command':
+                self.json_response(404, {'error': 'not_found'})
+                return
+            # An unrelated webpage cannot send this non-simple request: no
+            # CORS headers or OPTIONS endpoint are provided by this server.
+            if (self.headers.get('X-TankSession-Request') != '1' or
+                    self.headers.get_content_type() != 'application/json' or
+                    self.headers.get('Transfer-Encoding') is not None):
+                self.json_response(403, {'error': 'command_rejected'})
+                return
+            try:
+                length = int(self.headers.get('Content-Length', '-1'))
+                if not 1 <= length <= 16384:
+                    raise ValueError('Oversized command')
+                raw = self.rfile.read(length)
+                if len(raw) != length:
+                    raise ValueError('Incomplete command')
+                request = decode_request({'payload': raw})
+                if request.get('action') in MUTATIONS and not writable:
+                    self.json_response(403, {'error': 'read_only'})
+                    return
+            except (ValueError, TypeError, UnicodeError, OSError):
+                self.json_response(400, {'error': 'invalid_request'})
+                return
+            self.snapshot_response(request)
+
+        def do_GET(self):
+            if not self.valid_origin():
                 return
             if len(self.path) > 4096:
                 self.json_response(414, {'error': 'request_too_large'})
@@ -111,41 +167,58 @@ def create_ui_server(data_path, account_id, goals=None, demo=False,
                 self.json_response(404, {'error': 'not_found'})
                 return
             try:
-                if set(params).difference(('window', 'vehicle', 'request_id')):
+                if set(params).difference(('window', 'vehicle', 'request_id', 'page')):
                     raise ValueError('Unsupported query field')
                 if any(len(values) != 1 for values in params.values()):
                     raise ValueError('Duplicate query field')
                 window = params.get('window', ['10'])[0]
                 if window not in ('10', '30', '100'):
                     raise ValueError('Unsupported window')
-                request = validate_request({
+                request = {
                     'protocol': 1,
                     'request_id': params.get('request_id', ['preview'])[0],
                     'vehicle': params.get('vehicle', [''])[0],
                     'window': int(window),
-                })
+                }
+                if 'page' in params:
+                    page = params['page'][0]
+                    if not page.isascii() or not page.isdigit() or len(page) > 7:
+                        raise ValueError('Invalid page')
+                    request['page'] = int(page)
+                request = validate_request(request)
             except ValueError:
                 self.json_response(400, {'error': 'invalid_request'})
                 return
-            records = journal.records()
-            if journal.state in ('missing', 'unreadable'):
-                self.json_response(503, {'error': 'journal_unavailable'})
-                return
-            try:
-                snapshot = build_snapshot(records, account, request=request,
-                                          goals=goals, diagnostics=journal.diagnostics,
-                                          source='demo' if demo else 'game')
-            except (ValueError, TypeError, OverflowError):
-                self.json_response(503, {'error': 'snapshot_unavailable'})
-                return
-            self.json_response(200, snapshot)
+            self.snapshot_response(request)
 
     server = HTTPServer(('127.0.0.1', port), Handler)
     server.journal = journal
+    close = server.server_close
+
+    def close_server():
+        close()
+        if temporary:
+            temporary.cleanup()
+
+    server.server_close = close_server
     return server
 
 
+def _configure_cli_output():
+    """Keep Russian messages and Unicode paths intact in redirected output.
+
+    Windows pipes may otherwise use an ANSI code page which cannot encode the
+    help text. Configure the application, not its launcher's environment, and
+    leave in-memory text streams used by embedders alone.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, 'reconfigure', None)
+        if reconfigure is not None:
+            reconfigure(encoding='utf-8', errors='backslashreplace')
+
+
 def main(argv=None):
+    _configure_cli_output()
     parser = argparse.ArgumentParser(description='Просмотр нового интерфейса TankSession в браузере')
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument('--demo', action='store_true', help='Вымышленные демонстрационные бои')
@@ -154,6 +227,8 @@ def main(argv=None):
     parser.add_argument('--goals', default='', help='Локальный JSON с целями')
     parser.add_argument('--port', type=int, default=8770, help='Локальный порт, 0 — свободный')
     parser.add_argument('--no-browser', action='store_true', help='Только вывести адрес')
+    parser.add_argument('--allow-write', action='store_true',
+                        help='Разрешить локальное сохранение настроек, целей и CSV для --data')
     args = parser.parse_args(argv)
     if args.demo and args.account:
         parser.error('--account используется только вместе с --data')
@@ -164,7 +239,8 @@ def main(argv=None):
     goals_path = args.goals or (os.path.join(ROOT, 'sample_data', 'goals.json') if args.demo else '')
     try:
         server = create_ui_server(path, 'demo' if args.demo else args.account,
-                                  load_goals(goals_path), demo=args.demo, port=args.port)
+                                  load_goals(goals_path), demo=args.demo, port=args.port,
+                                  allow_write=args.allow_write)
     except (OSError, ValueError, TypeError, UnicodeError) as error:
         print('Запуск не выполнен: %s' % error, file=sys.stderr)
         return 1

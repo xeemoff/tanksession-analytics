@@ -131,10 +131,15 @@ export class HttpBridge implements Bridge {
     const xhr = new XMLHttpRequest();
     this.active = xhr;
     const query = 'window=' + request.window + '&vehicle=' + encodeURIComponent(request.vehicle)
-      + '&request_id=' + encodeURIComponent(request.request_id);
-    xhr.open('GET', '/api/snapshot?' + query, true);
+      + '&request_id=' + encodeURIComponent(request.request_id) + '&page=' + (request.page || 0);
+    const command = !!request.action;
+    xhr.open(command ? 'POST' : 'GET', command ? '/api/command' : '/api/snapshot?' + query, true);
     xhr.timeout = 10000;
     xhr.setRequestHeader('Accept', 'application/json');
+    if (command) {
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('X-TankSession-Request', '1');
+    }
     xhr.onload = () => {
       if (xhr !== this.active) return;
       this.active = null;
@@ -150,7 +155,7 @@ export class HttpBridge implements Bridge {
       this.active = null;
       this.report?.(new Error('Локальный сервер не отвечает. Проверьте, запущена ли панель.'));
     };
-    xhr.send();
+    xhr.send(command ? JSON.stringify(request) : null);
   }
   close(): void { this.active?.abort(); this.active = null; }
 }

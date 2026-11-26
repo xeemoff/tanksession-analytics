@@ -9,6 +9,7 @@ import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import urlencode
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
@@ -91,6 +92,27 @@ class HTTPTests(unittest.TestCase):
     def test_host_and_unknown_route_are_rejected(self):
         self.assertEqual(self.get(host='attacker.example')[0], 400)
         self.assertEqual(self.get('/not-a-route')[0], 404)
+
+    def test_canonical_and_legacy_vehicle_queries_share_only_the_selected_accounts_evidence(self):
+        self.write(record(1, 'A', vehicle='Old caption', vehicle_id='type:257'),
+                   record(2, 'A', vehicle='Old caption'),
+                   record(3, 'A', vehicle='New caption', vehicle_id='type:257'),
+                   record(4, 'B', vehicle='Old caption'))
+        original = self.path.read_bytes()
+        for selector in ('type:257', 'Old caption'):
+            query = urlencode({'account': 'A', 'vehicle': selector})
+            status, _, body = self.get('/?' + query)
+            self.assertEqual(status, 200)
+            self.assertIn('<option value="type:257" selected>Old caption</option>', body.decode('utf-8'))
+            status, _, body = self.get('/export.csv?' + query)
+            self.assertEqual(status, 200)
+            rows = list(csv.DictReader(io.StringIO(body.decode('utf-8-sig'))))
+            self.assertEqual([row['arena_id'] for row in rows], ['1', '2', '3'])
+            self.assertTrue(all(row['vehicle_id'] == 'type:257' for row in rows))
+        status, _, body = self.get('/export.csv?' + urlencode({'account': 'B', 'vehicle': 'type:257'}))
+        self.assertEqual(status, 200)
+        self.assertEqual(list(csv.DictReader(io.StringIO(body.decode('utf-8-sig')))), [])
+        self.assertEqual(self.path.read_bytes(), original)
 
     def test_partial_result_is_updated_without_double_counting(self):
         self.write(record(1, damage=None))

@@ -59,7 +59,7 @@
       "avg_damage": 1200.0,
       "battles": 10,
       "known_damage": 9,
-      "status": "not_achieved",
+      "status": "insufficient_data",
       "target": 2700,
       "vehicle": "IS-7",
       "window": 10

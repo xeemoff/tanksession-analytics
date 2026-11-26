@@ -16,6 +16,8 @@ async function serveCoachFixture(page: Page, name: string) {
     const url = new URL(route.request().url());
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...fixture, request_id: url.searchParams.get('request_id') }) });
   });
+  await page.route('**/api/command', route => route.fulfill({ contentType: 'application/json',
+    body: JSON.stringify({ ...fixture, request_id: route.request().postDataJSON().request_id }) }));
 }
 
 test('demo displays the Python snapshot and produces a review screenshot', async ({ page, request }) => {
@@ -143,7 +145,7 @@ test('Escape closes the preview and reopening reconnects', async ({ page }) => {
 });
 
 
-test('native-sized panel exposes sections and twelve history rows without wheel input', async ({ page }) => {
+test('native-sized panel exposes the entire paged history without wheel input', async ({ page, request }) => {
   await page.setViewportSize({ width: 1120, height: 800 });
   await page.goto('/?demo=1');
   await expect(page.getByTestId('battle-count')).toBeVisible();
@@ -151,14 +153,16 @@ test('native-sized panel exposes sections and twelve history rows without wheel 
   await expect(page.getByRole('heading', { name: 'Динамика урона' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Личная цель' })).toBeVisible();
   await page.getByRole('button', { name: 'История боёв', exact: true }).click();
-  await expect(page.getByTestId('history-page')).toHaveText('1 / 3');
+  const expected = await (await request.get('/api/snapshot?window=10&vehicle=&request_id=expected&page=0')).json();
+  const pages = expected.pagination.pages;
+  await expect(page.getByTestId('history-page')).toHaveText('1 / ' + pages);
   await expect(page.getByRole('row')).toHaveCount(6);
   await captureDocumentation(page, 'history');
   await page.getByRole('button', { name: 'Следующая страница боёв' }).click();
-  await expect(page.getByTestId('history-page')).toHaveText('2 / 3');
-  await page.getByRole('button', { name: 'Следующая страница боёв' }).click();
-  await expect(page.getByTestId('history-page')).toHaveText('3 / 3');
-  await expect(page.getByRole('row')).toHaveCount(3);
+  await expect(page.getByTestId('history-page')).toHaveText('2 / ' + pages);
+  await page.getByRole('button', { name: 'Последняя страница боёв' }).click();
+  await expect(page.getByTestId('history-page')).toHaveText(pages + ' / ' + pages);
+  await expect(page.getByRole('row')).toHaveCount(1 + expected.pagination.total - (pages - 1) * 5);
   await expect(page.getByRole('button', { name: 'Следующая страница боёв' })).toBeDisabled();
   await page.getByRole('button', { name: 'Прогресс', exact: true }).click();
   await expect(page.getByTestId('coach-card')).toBeVisible();
@@ -181,10 +185,95 @@ test('live Python preview exposes raw damage chart and grouped summaries without
   await expect(page.getByRole('group', { name: 'Урон отдельных боёв' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Сводка', exact: true }).click();
   await expect(page.getByTestId('outcome-tally')).toContainText(data.summary.losses + ' Пор');
+  await page.getByRole('button', { name: 'По дням', exact: true }).click();
   await expect(page.getByRole('table', { name: 'Сводка результатов' })).toBeVisible();
   await page.getByRole('button', { name: 'По технике', exact: true }).click();
   await expect(page.getByRole('table', { name: 'Сводка результатов' })).toContainText('IS-7');
   await captureDocumentation(page, 'summary');
   await page.getByRole('button', { name: 'По дням', exact: true }).click();
   await expect(page.getByRole('columnheader', { name: 'Дата получения' })).toBeVisible();
+});
+
+
+test('new battle details and optional metrics preserve missing values without hiding older pages', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1120, height: 800 });
+  const response = await request.get('/api/snapshot?window=10&vehicle=&request_id=expected&page=0');
+  const data = await response.json();
+  await page.goto('/?demo=1');
+  await page.getByRole('button', { name: 'История боёв', exact: true }).click();
+  await page.getByRole('button', { name: 'Подробности боя 1', exact: true }).click();
+  const detail = page.getByRole('region', { name: 'Подробности боя' });
+  await expect(detail).toContainText('Тире означает');
+  await expect(detail).toContainText('Выстрелы / попадания / пробития');
+  await page.getByRole('button', { name: 'Опыт и экономика', exact: true }).click();
+  await expect(detail).toContainText('Базовый опыт');
+  await expect(detail).toContainText('Может включать бонусы');
+  await page.getByRole('button', { name: 'К списку боёв' }).click();
+  await expect(page.getByTestId('history-page')).toHaveText('1 / ' + data.pagination.pages);
+  await page.getByRole('button', { name: 'Сводка', exact: true }).click();
+  await page.getByRole('button', { name: 'Показатели', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Дополнительные показатели' })).toContainText('У каждой метрики своя полнота данных');
+  await captureDocumentation(page, 'metrics');
+  await page.getByRole('button', { name: 'Сессии', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Сессии', exact: true })).toContainText('по времени получения результатов');
+  await page.getByRole('button', { name: 'Последние сессии', exact: true }).click();
+  await expect(page.getByRole('table', { name: 'Последние сессии' })).toBeVisible();
+  await captureDocumentation(page, 'sessions');
+});
+
+test('goals can be created and removed from the panel and CSV uses the selected history', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1120, height: 800 });
+  await page.goto('/?demo=1');
+  await page.getByRole('button', { name: 'Выбрать танк', exact: true }).click();
+  await page.getByRole('option', { name: /IS-7/ }).click();
+  await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+  await page.getByRole('group', { name: 'Раздел настроек' }).getByRole('button', { name: 'Цели', exact: true }).click();
+  await page.getByRole('button', { name: 'Добавить цель', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Целевой средний урон' }).fill('2300');
+  await page.getByRole('textbox', { name: 'Боёв для цели' }).fill('20');
+  await page.getByRole('button', { name: 'Сохранить цель', exact: true }).click();
+  await expect(page.getByTestId('operation-result')).toContainText('Цель сохранена');
+  await page.getByRole('button', { name: 'К списку целей', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Настройка целей' })).toContainText('2 300 урона · 20 боёв');
+  await captureDocumentation(page, 'goals');
+  await page.getByRole('button', { name: 'Удалить цель IS-7 20', exact: true }).click();
+  await expect(page.getByTestId('operation-result')).toContainText('Цель удалена');
+  await expect(page.getByRole('button', { name: 'Удалить цель IS-7 20', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Экспорт CSV', exact: true }).click();
+  const expected = await (await request.get('/api/snapshot?window=10&vehicle=IS-7&request_id=expected')).json();
+  await page.getByRole('button', { name: 'Сохранить CSV', exact: true }).click();
+  await expect(page.getByTestId('operation-result')).toContainText('CSV сохранён');
+  await expect(page.getByTestId('operation-result')).toContainText('Строк: ' + expected.summary.battles);
+  await expect(page.getByTestId('operation-result')).toContainText('Демонстрационный CSV во временной папке локального сервера');
+});
+
+test('saved appearance, vehicle and starting section survive reopening with all controls in view', async ({ page, request }) => {
+  const reset = { protocol: 1, request_id: 'test-reset', vehicle: '', window: 10, action: 'save_preferences', preferences: {
+    vehicle: '', window: 10, tab: 'progress', density: 'normal', contrast: 'standard'
+  } };
+  try {
+    await page.setViewportSize({ width: 1120, height: 800 });
+    await page.goto('/?demo=1');
+    await page.getByRole('button', { name: 'Выбрать танк', exact: true }).click();
+    await page.getByRole('option', { name: /IS-7/ }).click();
+    await page.getByRole('button', { name: '30 боёв', exact: true }).click();
+    await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+    await page.getByRole('button', { name: 'Компактная', exact: true }).click();
+    await page.getByRole('button', { name: 'Повышенный', exact: true }).click();
+    await page.getByRole('group', { name: 'Стартовый раздел' }).getByRole('button', { name: 'История боёв', exact: true }).click();
+    const save = page.getByRole('button', { name: 'Сохранить вид и фильтры', exact: true });
+    await expect(save).toBeInViewport();
+    await save.click();
+    await expect(page.getByTestId('operation-result')).toContainText('Вид и фильтры сохранены');
+    await expect(page.locator('.panel')).toHaveClass(/density-compact/);
+    await expect(page.locator('.panel')).toHaveClass(/contrast-high/);
+    await captureDocumentation(page, 'settings');
+    await page.reload();
+    await expect(page.getByRole('table', { name: 'Последние бои' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Выбрать танк', exact: true })).toContainText('IS-7');
+    await expect(page.getByRole('button', { name: '30 боёв', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.panel')).toHaveClass(/contrast-high/);
+  } finally {
+    await request.post('/api/command', { headers: { 'X-TankSession-Request': '1' }, data: reset });
+  }
 });

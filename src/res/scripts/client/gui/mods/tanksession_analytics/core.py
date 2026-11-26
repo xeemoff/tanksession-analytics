@@ -8,6 +8,10 @@ from __future__ import division
 import time
 from datetime import datetime
 
+from .economy import derive_economy
+from .vehicles import (coherent_identity, identity_from_internal_name,
+                       identity_from_type_descr, normalize_vehicle_id)
+
 try:
     _text_type = unicode
 except NameError:
@@ -46,6 +50,21 @@ def _non_negative_int(value):
         if number < 0 or number > MAX_RECORD_INTEGER:
             return None
         # Prevent truncation of floats / Decimal-like values.
+        if not isinstance(value, (bytes, _text_type, int, long_type)) and value != number:
+            return None
+        return number
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
+def _signed_int(value):
+    """Signed 64-bit local metrics, including a known negative net income."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = int(value)
+        if number < -MAX_RECORD_INTEGER - 1 or number > MAX_RECORD_INTEGER:
+            return None
         if not isinstance(value, (bytes, _text_type, int, long_type)) and value != number:
             return None
         return number
@@ -142,12 +161,27 @@ def _validate_record(record):
         'mode': _record_text(record.get('mode'), 'unknown', 128),
         'outcome': outcome,
     }
-    for name in ('timestamp', 'damage', 'assistance_radio', 'assistance_track', 'xp'):
+    identity = record.get('vehicle_id')
+    clean['vehicle_id'] = normalize_vehicle_id(identity)
+    if identity is not None and clean['vehicle_id'] is None:
+        raise ValueError('Invalid vehicle_id')
+    for name in ('timestamp', 'damage', 'assistance_radio', 'assistance_track', 'xp',
+                 'kills', 'shots', 'direct_hits', 'penetrations', 'xp_base', 'xp_bonus',
+                 'credits_gross'):
         value = record.get(name)
         number = _non_negative_int(value)
         if value is not None and number is None:
             raise ValueError('Invalid numeric field: ' + name)
         clean[name] = number
+    clean['map'] = _record_text(record.get('map'), None, 128)
+    value = record.get('credits_net')
+    clean['credits_net'] = _signed_int(value)
+    if value is not None and clean['credits_net'] is None:
+        raise ValueError('Invalid numeric field: credits_net')
+    survived = record.get('survived')
+    if survived is not None and not isinstance(survived, bool):
+        raise ValueError('Invalid survived field')
+    clean['survived'] = survived
     clean['data_status'] = 'complete' if record_is_complete(clean) else 'incomplete'
     return clean
 
@@ -241,7 +275,22 @@ def normalize_result(results, context=None, observed_at=None):
     account = context.get('account_id')
     if account is None:
         account = 'local'
-    vehicle = context.get('vehicle_name') or _get_first(personal, ('vehicleName', 'vehicleType')) or 'unknown'
+    result_name = _get_first(personal, ('vehicleName', 'vehicleType'))
+    vehicle = context.get('vehicle_name') or result_name or 'unknown'
+    # Entity/playerVehicleID selects the own result; it is never a type ID.
+    # Pending battle context and the result must agree when both are known.
+    captured_identity = normalize_vehicle_id(context.get('vehicle_id'))
+    if context.get('vehicle_id') is not None and captured_identity is None:
+        return None
+    try:
+        vehicle_identity = coherent_identity((
+            captured_identity,
+            identity_from_type_descr(personal.get('typeCompDescr')),
+            identity_from_internal_name(context.get('vehicle_name')),
+            identity_from_internal_name(result_name),
+        ))
+    except ValueError:
+        return None
 
     player_team = _get_first(personal, ('team',))
     if player_team is None:
@@ -271,18 +320,46 @@ def normalize_result(results, context=None, observed_at=None):
     if when is None:
         return None
     mode = _get_first(common, ('bonusType',))
+    arena_type = _non_negative_int(common.get('arenaTypeID'))
+    death_reason = _signed_int(personal.get('deathReason'))
+    survived = None
+    if death_reason is not None and death_reason >= -1:
+        survived = death_reason == -1
+    # Avatar credit rewards belong to the whole account result. Include them
+    # only for an identity-confirmed, unambiguous single-vehicle random battle.
+    personal_map = results['personal']
+    avatar = personal_map.get('avatar')
+    own_account = _non_negative_int(context.get('account_id'))
+    avatar_account = (_non_negative_int(avatar.get('accountDBID'))
+                      if isinstance(avatar, dict) else None)
+    verified_avatar = (avatar if own_account is not None and own_account > 0 and
+                       avatar_account == own_account else None)
+    vehicle_entries = [item for key, item in personal_map.items() if key != 'avatar']
+    single_vehicle = len(vehicle_entries) == 1 and vehicle_entries[0] is personal
+    economics = derive_economy(personal, verified_avatar, single_vehicle, mode)
     record = {
         'schema': 1,
         'arena_id': identifier,
         'account_id': _as_text(account),
         'timestamp': when,
         'vehicle': _as_text(vehicle),
+        'vehicle_id': vehicle_identity,
         'mode': _as_text(mode if mode is not None else 'unknown'),
         'outcome': outcome,
         'damage': _non_negative_int(_get_first(personal, ('damageDealt',))),
         'assistance_radio': _non_negative_int(_get_first(personal, ('damageAssistedRadio',))),
         'assistance_track': _non_negative_int(_get_first(personal, ('damageAssistedTrack',))),
         'xp': _non_negative_int(_get_first(personal, ('xp', 'baseXP'))),
+        'map': 'arena:%s' % arena_type if arena_type else None,
+        'kills': _non_negative_int(personal.get('kills')),
+        'shots': _non_negative_int(personal.get('shots')),
+        'direct_hits': _non_negative_int(personal.get('directHits')),
+        'penetrations': _non_negative_int(personal.get('piercings')),
+        'survived': survived,
+        'xp_base': economics['xp_base'],
+        'xp_bonus': economics['xp_bonus'],
+        'credits_gross': _non_negative_int(personal.get('credits')),
+        'credits_net': economics['credits_net'],
     }
     return validate_record(record)
 

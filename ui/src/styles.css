@@ -291,3 +291,80 @@ body.native-gameface, .native-gameface .page { background-color: transparent; }
   .insight-card strong { font-size: 15px; }
   .insight-card p, .insight-card > span, .insight-table .history-row { font-size: 10px; }
 }
+
+/* Small subpages keep primary actions reachable without a mouse wheel. */
+.workspace-view, .settings-card, .battle-detail, .extended-metrics, .sessions-view { display: flex; flex-direction: column; flex-shrink: 0; min-width: 0; }
+.settings-card { padding: 16px 18px; border: 1px solid #46513e; border-radius: 7px; background: #202820; }
+.settings-card .section-heading { margin-bottom: 10px; }
+.section-heading > button { padding: 6px 12px; font-size: 12px; margin-left: 10px; flex-shrink: 0; }
+.settings-two-column { display: flex; flex-direction: row; margin-bottom: 9px; }
+.settings-field { display: flex; flex-direction: column; width: 50%; }
+.settings-field .field-label { margin-bottom: 0; }
+.settings-description { display: block; margin-top: 9px; color: #c1cdb6; font-size: 13px; line-height: 19px; }
+.settings-card .primary-button { align-self: flex-start; margin-top: 15px; }
+.startup-tabs { flex-wrap: wrap; margin-top: 0; }
+.startup-tabs button { font-size: 12px; }
+.goal-editor-row { display: flex; flex-direction: row; align-items: flex-end; margin-top: 8px; }
+.goal-editor-row .vehicle-picker { flex: 1 1 auto; max-width: 420px; width: auto; }
+.settings-input { display: flex; flex-direction: column; width: 155px; margin-right: 15px; }
+.settings-input > span { display: block; font-size: 12px; color: #bdcbb1; margin-bottom: 8px; }
+.settings-input input { width: 100%; height: 37px; padding: 7px 10px; font-family: inherit; font-size: 15px; color: #eef3e8; background: #141b16; border: 1px solid #657155; border-radius: 4px; }
+.settings-input input:focus { outline: 2px solid #dfb875; outline-offset: 2px; }
+.settings-input input:disabled { opacity: 0.5; }
+.editable-goals { display: flex; flex-direction: column; }
+.editable-goal { display: flex; flex-direction: row; align-items: center; min-height: 67px; padding: 10px 0; border-bottom: 1px solid #424d39; }
+.editable-goal > div { display: flex; flex: 1 1 auto; min-width: 0; flex-direction: column; }
+.editable-goal strong, .editable-goal span { display: block; overflow-wrap: break-word; }
+.editable-goal strong { color: #ebd39f; font-size: 14px; }
+.editable-goal span { color: #b6c4a8; font-size: 12px; margin-top: 5px; }
+.editable-goal > button { padding: 7px 13px; margin-left: 9px; font-size: 13px; }
+.operation-notice { display: flex; flex-direction: column; flex-shrink: 0; padding: 7px 10px; margin-bottom: 8px; color: #d3e4bd; background: #283423; border: 1px solid #62734d; border-radius: 4px; font-size: 12px; line-height: 17px; }
+.operation-notice > span { display: block; overflow-wrap: break-word; }
+.operation-error { color: #f0c1ad; background: #382b23; border-color: #96634e; }
+.command-progress { display: block; margin-top: 7px; color: #e9d19f; font-size: 12px; }
+.detail-grid { display: flex; flex-direction: row; flex-wrap: wrap; margin-top: 8px; }
+.detail-metric { display: flex; flex-direction: column; flex: 1 1 23%; min-width: 150px; padding: 12px 13px; margin: 0 1% 10px 0; border: 1px solid #42513b; border-radius: 5px; background: #222c22; }
+.detail-metric > span, .detail-metric > strong, .detail-metric > small { display: block; overflow-wrap: break-word; }
+.detail-metric > span { color: #b5c3aa; font-size: 12px; line-height: 17px; }
+.detail-metric > strong { color: #eddda9; font-size: 21px; line-height: 28px; margin: 7px 0 4px; }
+.detail-metric > small { color: #aebc9f; font-size: 12px; line-height: 18px; }
+.battle-detail .detail-metric { flex: 1 1 22%; }
+.battle-detail .section-heading h2 { font-size: 15px; }
+.col-details { flex-shrink: 0; width: 10%; justify-content: flex-end; }
+.detail-button { padding: 5px 8px; font-size: 12px; }
+.history-row .col-result { width: 18%; }
+.history-row .col-damage { width: 11%; padding-right: 15px; }
+.history-row .col-xp { width: 10%; padding-right: 12px; }
+.history-pages > button + button { margin-left: 7px; }
+.history-pages > button { padding-left: 11px; padding-right: 11px; }
+.goal-navigation { justify-content: space-between; margin-top: 8px; }
+.goal-navigation > button { padding: 5px 8px; font-size: 11px; }
+.goal-navigation > span { margin: 0 5px; font-size: 11px; }
+.compact-summary .history-row > span { width: 20%; flex-shrink: 0; justify-content: flex-end; }
+.compact-summary .history-row > span:first-child { flex: 1 1 0; width: auto; justify-content: flex-start; padding-right: 10px; }
+.session-verdict { display: block; color: #e5d6ab; font-size: 15px; line-height: 22px; margin: 12px 0; }
+.session-comparison .history-row { min-height: 43px; }
+.summary-tabs { margin-top: 0; margin-bottom: 10px; }
+.density-compact .panel-content { padding-top: 10px; padding-bottom: 9px; }
+.density-compact .toolbar, .density-compact .section-tabs { margin-bottom: 9px; }
+.density-compact .history-row { min-height: 32px; padding-top: 5px; padding-bottom: 5px; }
+.density-compact .metric-card, .density-compact .detail-metric { padding-top: 8px; padding-bottom: 8px; }
+.density-compact .settings-card { padding-top: 12px; padding-bottom: 12px; }
+.density-compact .insight-card { padding-top: 8px; padding-bottom: 8px; }
+.contrast-high { background: #101812; border-color: #a1ae86; }
+.contrast-high .panel-header, .contrast-high .panel-footer, .contrast-high .history-head { background: #111b13; }
+.contrast-high .muted, .contrast-high .small, .contrast-high .field-label, .contrast-high .eyebrow, .contrast-high .subtle-tag,
+.contrast-high .trend-note, .contrast-high .metric-detail, .contrast-high .quality-line, .contrast-high .detail-metric > span,
+.contrast-high .detail-metric > small, .contrast-high .insight-card p, .contrast-high .settings-description { color: #d6dfc9; }
+.contrast-high .history-row, .contrast-high .settings-card, .contrast-high .detail-metric, .contrast-high button { border-color: #778767; }
+.contrast-high .positive { color: #d5f4ad; }
+.contrast-high .negative { color: #ffc9b8; }
+.contrast-high button.active, .contrast-high button[aria-pressed="true"] { color: #ffe3a7; border-color: #e1bf71; }
+@media (max-width: 850px) {
+  .goal-editor-row { flex-wrap: wrap; }
+  .goal-editor-row .vehicle-picker { max-width: none; width: 100%; margin-bottom: 14px; }
+  .detail-metric { flex-basis: 40%; }
+  .startup-tabs button { margin-bottom: 6px; }
+  .section-tabs button { font-size: 12px; }
+  .col-details { width: 12%; }
+}
