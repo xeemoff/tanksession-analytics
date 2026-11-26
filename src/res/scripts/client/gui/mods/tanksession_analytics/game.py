@@ -33,6 +33,7 @@ _login_generation = 0
 _notices = set()
 _gameface = None
 _in_hangar = False
+_result_service_event = None
 
 
 def _log(message):
@@ -191,16 +192,71 @@ def _on_battle_results(is_player_vehicle, results):
         _error('Battle capture failed: ' + type(error).__name__)
 
 
-def _try_recover():
+def _recovery_account():
+    # Never query the cache on an Avatar or with only a stale login ID.
+    if not _initialized or _is_replay():
+        return None
+    player = BigWorld.player()
+    if (player is None or getattr(player, 'arenaUniqueID', None) not in (None, 0)
+            or getattr(player, 'arena', None) is not None):
+        return None
+    account, conflict = _live_account_identity(player)
+    if conflict or account is None:
+        return None
+    cached = _verified_account(_account_id)
+    return account if cached in (None, account) else None
+
+
+def _refresh_recovered():
+    if _gameface is not None:
+        _gameface.refresh()
+
+
+def _on_result_posted(reusable, *args, **kwargs):
+    """A lobby result is ready; only query a previously staged own battle."""
+    if _recovery is None:
+        return
+    try:
+        account = _recovery_account()
+        arena = getattr(reusable, 'arenaUniqueID', None)
+        avatar = getattr(getattr(reusable, 'personal', None), 'avatar', None)
+        if (account is None or arena is None or
+                _verified_account(getattr(avatar, 'accountDBID', None)) != account):
+            return
+        if _verified_account(_pending.context(arena).get('account_id')) != account:
+            return
+        _log('Own pending result posted in lobby')
+        _try_recover(arena_id=arena, posted=True)
+    except Exception:
+        _notice_once('result_posted', 'Lobby result hook unavailable in this client state')
+
+
+def _attach_result_service():
+    global _result_service_event
+    if _recovery is None or _result_service_event is not None:
+        return
+    try:
+        from helpers import dependency
+        from skeletons.gui.battle_results import IBattleResultsService
+        service = dependency.instance(IBattleResultsService)
+        event = service.onResultPosted
+        event += _on_result_posted
+        _result_service_event = event
+        _log('Lobby result hook attached')
+    except Exception:
+        _notice_once('result_service', 'Optional lobby result hook unavailable')
+
+
+def _try_recover(arena_id=None, posted=False):
     if _recovery is None or not _initialized or _is_replay():
         return
     try:
-        player = BigWorld.player()
-        if player is None:
+        account_id = _recovery_account()
+        if account_id is None:
             return
-        account_id = _verified_account(_context().get('account_id'))
+        player = BigWorld.player()
         cache = getattr(player, 'battleResultsCache', None)
-        _recovery.poll(cache, account_id)
+        _recovery.poll(cache, account_id, arena_id=arena_id, posted=posted)
         if cache is None or not callable(getattr(cache, 'get', None)):
             _notice_once('result_cache',
                          'Optional cache recovery unavailable: result cache API missing')
@@ -273,6 +329,7 @@ def _on_hangar_space_create(*args, **kwargs):
         pass
     if _gameface is not None:
         _gameface.on_hangar()
+    _attach_result_service()
     _try_recover()
     try:
         from gui import SystemMessages
@@ -436,7 +493,10 @@ def init():
         _recorder = ResultRecorder(_store, _pending, require_account=True)
         stage = 'loading local settings'
         if _load_cache_opt_in():
-            _recovery = CacheRecovery(_pending, _recorder, log=_log)
+            _recovery = CacheRecovery(_pending, _recorder, log=_log,
+                                      max_requests=1, serialize=True,
+                                      account_provider=_recovery_account,
+                                      on_record=_refresh_recovered)
             _log('EXPERIMENTAL cache recovery enabled (unverified API)')
         stage = 'subscribing required battle-result event'
         _attach_event('onBattleResultsReceived', _on_battle_results, required=True)
@@ -452,6 +512,7 @@ def init():
         except Exception:
             _hangar_space = None
             _log('Hangar notification hook unavailable')
+        _attach_result_service()
         _start_gameface()
     except Exception as error:
         _error('Startup failed: %s (%s)' % (stage, type(error).__name__))
@@ -461,7 +522,7 @@ def init():
 def fini():
     global _initialized, _store, _pending, _recorder, _recovery, _hangar_space, _account_id
     global _login_generation
-    global _gameface, _in_hangar
+    global _gameface, _in_hangar, _result_service_event
     _in_hangar = False
     if _gameface is not None:
         _gameface.stop()
@@ -471,6 +532,12 @@ def fini():
         _recovery.stop()
     _cancel_recovery_timers()
     _detach_events()
+    if _result_service_event is not None:
+        try:
+            _result_service_event -= _on_result_posted
+        except Exception:
+            pass
+        _result_service_event = None
     if _hangar_space is not None:
         try:
             _hangar_space.onSpaceCreate -= _on_hangar_space_create

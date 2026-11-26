@@ -78,6 +78,15 @@ class NormalizeTests(unittest.TestCase):
         self.assertEqual(result_rejection_reason({'personal': {}}), 'arena_id_unavailable')
         self.assertEqual(result_rejection_reason({'arenaId': 5}), 'personal_map_unavailable')
 
+    def test_own_avatar_team_identifies_loss_without_vehicle_team(self):
+        raw = {'arenaUniqueID': 124, 'common': {'winnerTeam': 1},
+               'personal': {'avatar': {'accountDBID': 88, 'team': 2},
+                            12345: {'damageDealt': 0, 'xp': 200}}}
+        context = {'account_id': '88', 'confirmed_own_result': True}
+        self.assertEqual(normalize_result(raw, context)['outcome'], 'loss')
+        raw['personal']['avatar']['accountDBID'] = 99
+        self.assertEqual(normalize_result(raw, context)['outcome'], 'unknown')
+
     def test_draw(self):
         raw = {'arenaUniqueID': 124, 'common': {'winnerTeam': 0}, 'personal': {1: {'team': 2}}}
         self.assertEqual(normalize_result(raw)['outcome'], 'draw')
