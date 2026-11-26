@@ -245,6 +245,13 @@ def normalize_result(results, context=None, observed_at=None):
 
     player_team = _get_first(personal, ('team',))
     if player_team is None:
+        # The full result may store the own team in personal.avatar rather
+        # than the vehicle entry. Trust it only for the verified account.
+        avatar = results['personal'].get('avatar')
+        if (isinstance(avatar, dict) and context.get('account_id') is not None
+                and _as_text(avatar.get('accountDBID')) == _as_text(context['account_id'])):
+            player_team = _get_first(avatar, ('team',))
+    if player_team is None:
         player_team = context.get('team')
     winner = _get_first(common, ('winnerTeam',))
     if winner is None:

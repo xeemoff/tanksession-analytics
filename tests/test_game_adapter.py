@@ -313,6 +313,8 @@ class GameAdapterTests(unittest.TestCase):
         self.game.init()
         self.game._on_account_become_player()
         self.game._on_avatar_ready()
+        self.player.arenaUniqueID = None
+        self.player.playerVehicleID = None
         self.game._try_recover()
         self.assertEqual(len(requests), 1)
         self.player.databaseID = 99
@@ -322,6 +324,35 @@ class GameAdapterTests(unittest.TestCase):
         requests[0][1](0, payload)
         self.assertEqual(self.game._store.records, [])
         self.assertIn('1234', self.game._pending.pending)
+
+    def test_lobby_posted_recovers_only_own_pending_loss(self):
+        self.game._load_cache_opt_in = lambda: True
+        requests = []
+        self.player.battleResultsCache = types.SimpleNamespace(
+            get=lambda arena, callback: requests.append((arena, callback)))
+        self.game.init()
+        self.game._on_account_become_player()
+        self.game._on_avatar_ready()
+        self.player.arenaUniqueID = None
+        self.player.playerVehicleID = None
+        def posted(account, arena):
+            return types.SimpleNamespace(arenaUniqueID=arena,
+                personal=types.SimpleNamespace(avatar=types.SimpleNamespace(accountDBID=account)))
+        self.game._on_result_posted(posted(99, 1234))
+        self.game._on_result_posted(posted(88, 9999))
+        self.assertEqual(requests, [])
+        self.game._on_result_posted(posted(88, 1234))
+        self.assertEqual(len(requests), 1)
+        payload = {'arenaUniqueID': 1234, 'common': {'winnerTeam': 2},
+                   'personal': {'avatar': {'accountDBID': 88, 'team': 1},
+                                777: {'damageDealt': 0, 'xp': 400}}}
+        requests[0][1](2, payload)
+        self.assertEqual(len(self.game._store.records), 1)
+        self.assertEqual(self.game._store.records[0]['outcome'], 'loss')
+        self.assertNotIn('1234', self.game._pending.pending)
+        self.game._on_result_posted(posted(88, 1234))
+        self.assertEqual(len(requests), 1)
+        self.assertTrue(any('Recovered battle: complete' in line for line in self.notes))
 
     def test_delayed_recovery_timer_belongs_to_one_login(self):
         self.game._load_cache_opt_in = lambda: True

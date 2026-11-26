@@ -369,6 +369,8 @@ class NativeSurfaceTests(unittest.TestCase):
         self.account = '88'
         self.created = []
         self.destroy_raises = False
+        self.center_raises = False
+        self.center_result = True
         owner = self
 
         def module(name, **values):
@@ -418,6 +420,7 @@ class NativeSurfaceTests(unittest.TestCase):
                 self.proxy = object()
                 self.windowStatus = 0
                 self.focus = None
+                self.center_calls = 0
                 owner.created.append(self)
 
             def load(self):
@@ -426,6 +429,12 @@ class NativeSurfaceTests(unittest.TestCase):
 
             def show(self, focus):
                 self.focus = focus
+
+            def center(self):
+                self.center_calls += 1
+                if owner.center_raises:
+                    raise RuntimeError('PRIVATE_POSITION_ERROR')
+                return owner.center_result
 
             def destroy(self):
                 if owner.destroy_raises:
@@ -521,6 +530,37 @@ class NativeSurfaceTests(unittest.TestCase):
             'request_id': 'closed', 'error': 'data_unavailable'})
         self.assertTrue(all(not command.handlers for command in model.commands))
         self.assertNotIn('PRIVATE_NATIVE_ERROR', '\n'.join(self.logs))
+
+    def test_center_after_first_request_only_and_again_on_reopen(self):
+        self.assertTrue(self.controller.start())
+        self.key(8)
+        window = self.created[-1]
+        self.assertEqual(window.center_calls, 0)
+        for identifier in ('ui-1', 'ui-2'):
+            window.content.viewModel.onRequest.fire(request(identifier))
+            self.timers.pop(self.controller._request_timer)()
+            self.assertEqual(window.center_calls, 1)
+            self.assertEqual(window.windowStatus, 1)
+        self.controller.close()
+        self.key(8)
+        replacement = self.created[-1]
+        replacement.content.viewModel.onRequest.fire(request('ui-1'))
+        self.timers.pop(self.controller._request_timer)()
+        self.assertEqual(replacement.center_calls, 1)
+
+    def test_failed_center_is_nonfatal_and_not_retried(self):
+        self.center_raises = True
+        self.assertTrue(self.controller.start())
+        self.key(8)
+        window = self.created[-1]
+        for identifier in ('ui-1', 'ui-2'):
+            window.content.viewModel.onRequest.fire(request(identifier))
+            self.timers.pop(self.controller._request_timer)()
+            self.assertEqual(json.loads(window.content.viewModel.values[0])['request_id'], identifier)
+        self.assertEqual(window.windowStatus, 1)
+        self.assertEqual(window.center_calls, 1)
+        self.assertTrue(any('window centering unavailable' in line for line in self.logs))
+        self.assertNotIn('PRIVATE_POSITION_ERROR', '\n'.join(self.logs))
 
     def test_unloaded_parent_does_not_create_or_show_window(self):
         self.parent.proxy = None

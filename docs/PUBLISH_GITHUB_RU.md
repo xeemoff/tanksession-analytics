@@ -1,18 +1,23 @@
-# Публикация TankSession Analytics на GitHub
+# Поддержка страницы GitHub
 
-Репозиторий `xeemoff/tanksession-analytics`, видимость публичная, основная ветка `main`, лицензия MIT. Краткое описание находится в [GITHUB_DESCRIPTION_RU.txt](../GITHUB_DESCRIPTION_RU.txt).
+Публичный репозиторий: [xeemoff/tanksession-analytics](https://github.com/xeemoff/tanksession-analytics), основная ветка `main`, лицензия MIT.
 
-Темы репозитория: `python`, `game-mod`, `mir-tankov`, `game-analytics`, `dashboard`, `csv`.
+- Главная витрина: [README](../README.md), [галерея](SCREENSHOTS_RU.md), [архитектура](ARCHITECTURE_RU.md), [история изменений](../CHANGELOG.md).
+- Снимки галереи берутся из браузерного демо; факты работы в игре фиксируются отдельно в [протоколе](CLIENT_VALIDATION_RU.md). Не публикуйте реальные журналы, идентификаторы и личные скриншоты.
+- Краткое описание для раздела About находится в [GITHUB_DESCRIPTION_RU.txt](../GITHUB_DESCRIPTION_RU.txt).
+- Рекомендуемые темы: `python`, `react`, `typescript`, `gameface`, `game-mod`, `mir-tankov`, `game-analytics`, `dashboard`, `csv`.
 
-## Первый выпуск
+## Обновление About владельцем
 
-Команды выполняются из локального репозитория с подготовленным первым коммитом и тегом `v0.3.0`. Проверить их содержимое можно через `git show --stat v0.3.0`. Для публикации нужен вход в GitHub CLI под владельцем репозитория.
+На главной странице репозитория откройте шестерёнку возле **About**, вставьте актуальный текст описания и обновите темы. Либо выполните из локального клона с установленным и авторизованным GitHub CLI:
 
 ```powershell
-gh repo create xeemoff/tanksession-analytics --public --source . --remote origin --push --description (Get-Content -Encoding utf8 -Raw GITHUB_DESCRIPTION_RU.txt).Trim()
-git push origin refs/tags/v0.3.0
-gh repo edit xeemoff/tanksession-analytics --add-topic python,game-mod,mir-tankov,game-analytics,dashboard,csv
-gh release create v0.3.0 --repo xeemoff/tanksession-analytics --verify-tag --prerelease --title "TankSession Analytics v0.3.0 — сравнение боёв и техники" --notes-file docs/releases/v0.3.0.md
+gh repo edit xeemoff/tanksession-analytics --description (Get-Content -Encoding utf8 -Raw GITHUB_DESCRIPTION_RU.txt).Trim()
+gh repo edit xeemoff/tanksession-analytics --add-topic react,typescript,gameface
 ```
 
-Если репозиторий уже создан, сверьте его владельца и содержимое перед отправкой. [Описание выпуска](releases/v0.3.0.md) фиксирует статус проверки игровой интеграции. GitHub формирует архивы исходников по тегу.
+Файл с описанием сам по себе не изменяет метаданные репозитория.
+
+## Версии и публикация
+
+Ранее выпущенная версия v0.3.0 сохраняется как историческая предварительная версия. [Описание выпуска](releases/v0.3.0.md) относится только к этому тегу. Новые кандидаты собираются в GitHub Actions; до подтверждения сценариев не объявляйте их стабильным игровым релизом. См. [правила публикации](PUBLICATION_RU.md).

@@ -54,6 +54,22 @@ class RecoveryLimitTests(unittest.TestCase):
         self.assertFalse(recovery.in_flight)
         self.assertFalse(recovery._request_tokens)
 
+    def test_posted_signal_retries_only_matching_pending_once(self):
+        pending = Pending([('1', 'A'), ('2', 'A'), ('3', 'B')])
+        recorder, cache, logs = Recorder(), Cache(), []
+        recovery = CacheRecovery(pending, recorder, log=logs.append,
+                                 max_requests=1, serialize=True)
+        self.assertEqual(recovery.poll(cache, 'A', now=100), 1)
+        self.assertEqual(cache.requests[0][0], 2)
+        cache.reply(0, error=-5)
+        self.assertTrue(any('cooldown' in line for line in logs))
+        self.assertEqual(recovery.poll(cache, 'A', now=101, arena_id=2, posted=True), 1)
+        self.assertEqual(recovery.poll(cache, 'A', now=102, arena_id=1, posted=True), 0)
+        cache.reply(1, error=-10)
+        self.assertEqual(recovery.poll(cache, 'A', now=103, arena_id=2, posted=True), 0)
+        self.assertEqual(recovery.poll(cache, 'A', now=103, arena_id=3, posted=True), 0)
+        self.assertFalse(recorder.calls)
+
     def test_zero_budget_makes_no_request(self):
         recovery = CacheRecovery(Pending([('1', 'A')]), Recorder(), max_requests=0)
         cache = Cache()

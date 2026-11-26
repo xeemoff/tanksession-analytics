@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Coach } from './contracts';
+import { vehicleLabel } from './vehicleLabel';
 
 function number(value: number | null, digits = 0): string {
   if (value === null) return '—';
@@ -21,7 +22,7 @@ function Records({ coach }: { coach: Coach }) {
         : 'Последний сохранённый бой: ' + number(records.latest_damage) + ' урона.'}</p>
     </div>
     <div className="coach-record">
-      <span className="coach-record-label">Лучшая серия из {coach.window} боёв</span>
+      <span className="coach-record-label">{'Лучшая серия из ' + coach.window + ' боёв'}</span>
       <div className="coach-record-value"><strong data-testid="coach-best-window">{number(records.best_window_avg, 1)}</strong><span>в среднем</span>
         {records.new_window_record && <span className="coach-record-badge">Новый рекорд</span>}</div>
       <p>{records.new_window_record ? 'Текущая серия превысила прежний максимум: ' + number(records.previous_best_window_avg, 1) + '.'
@@ -44,36 +45,35 @@ export function CoachCard({ coach, latestVehicle, onSelectVehicle }: {
     <div className="section-heading"><h2>Разбор прогресса</h2><span className="subtle-tag">{choose ? 'ОДНА МАШИНА' : coach.window + ' + ' + coach.window + ' БОЁВ'}</span></div>
     {choose ? <div className="coach-choose">
       <div><strong>Выберите машину для личного сравнения</strong><p>Результаты разной или неизвестной техники не смешиваются. Выберите определённый танк в списке выше.</p></div>
-      {latestVehicle && latestVehicle !== 'unknown' && onSelectVehicle && <button type="button" className="coach-select-button" onClick={() => onSelectVehicle(latestVehicle)} aria-label="Разобрать последнюю машину">Разобрать {latestVehicle}</button>}
+      {latestVehicle && latestVehicle !== 'unknown' && onSelectVehicle && <button type="button" className="coach-select-button" onClick={() => onSelectVehicle(latestVehicle)} aria-label="Разобрать последнюю машину">{'Разобрать ' + vehicleLabel(latestVehicle)}</button>}
     </div> : <>
-      <div className="coach-scope"><strong>{coach.vehicle || 'Машина ещё не выбрана'}</strong><span>{coach.battles} сохранённых боёв</span></div>
+      {!explain && <><div className="coach-scope"><strong>{coach.vehicle ? vehicleLabel(coach.vehicle) : 'Машина ещё не выбрана'}</strong><span>{coach.battles + ' сохранённых боёв'}</span></div>
       {comparison ? <>
         <div className="coach-verdict">
           <strong className={positive ? 'positive' : negative ? 'negative' : ''}>{positive ? 'Средний урон в этой выборке выше' : negative ? 'Средний урон в этой выборке ниже' : 'Средний урон почти не изменился'}</strong>
-          <span className={positive ? 'positive' : negative ? 'negative' : 'muted'} data-testid="coach-delta">{delta(comparison.delta)} урона{comparison.delta_percent !== null ? ' (' + delta(comparison.delta_percent) + '%)' : ''}</span>
+          <span className={positive ? 'positive' : negative ? 'negative' : 'muted'} data-testid="coach-delta">{delta(comparison.delta) + ' урона' + (comparison.delta_percent !== null ? ' (' + delta(comparison.delta_percent) + '%)' : '')}</span>
         </div>
         <div className="coach-comparison" role="table" aria-label="Сравнение урона двух периодов">
-          <div className="coach-comparison-row coach-comparison-head" role="row"><span role="columnheader">Показатель</span><span role="columnheader">Предыдущие {coach.window}</span><span role="columnheader">Последние {coach.window}</span><span role="columnheader">Изменение</span></div>
+          <div className="coach-comparison-row coach-comparison-head" role="row"><span role="columnheader">Показатель</span><span role="columnheader">{'Предыдущие ' + coach.window}</span><span role="columnheader">{'Последние ' + coach.window}</span><span role="columnheader">Изменение</span></div>
           <div className="coach-comparison-row" role="row"><strong role="rowheader">Средний урон</strong><span role="cell">{number(comparison.previous_avg, 1)}</span><span role="cell">{number(comparison.current_avg, 1)}</span><span role="cell">{delta(comparison.delta)}</span></div>
           <div className="coach-comparison-row" role="row"><strong role="rowheader">Медиана урона</strong><span role="cell">{number(comparison.previous_median, 1)}</span><span role="cell">{number(comparison.current_median, 1)}</span><span role="cell">{delta(comparison.median_delta)}</span></div>
         </div>
         {comparison.delta * comparison.median_delta < 0 && <p className="coach-evidence coach-divergence">Среднее и медиана изменились в разные стороны. По одному среднему нельзя судить обо всей серии.</p>}
-        <p className="coach-evidence">Два непересекающихся периода. Урон известен в {coach.coverage.previous_damage}/{coach.window} предыдущих и {coach.coverage.current_damage}/{coach.window} последних боёв.</p>
+        <p className="coach-evidence">{'Два непересекающихся периода. Урон известен в ' + coach.coverage.previous_damage + '/' + coach.window + ' предыдущих и ' + coach.coverage.current_damage + '/' + coach.window + ' последних боёв.'}</p>
       </> : <div className="coach-wait" role="status">
         <strong>{coach.status === 'mixed_modes' ? 'В этих периодах разные типы боёв' : coach.status === 'incomplete' ? 'Для вывода не хватает значений урона' : coach.status === 'empty' ? 'История для сравнения пока пуста' : 'Набираем историю для сравнения'}</strong>
-        <p>{coach.status === 'mixed_modes' ? 'Сравнение скрыто: последние два периода содержат разные известные типы боёв. Локальные рекорды ниже описывают всю сохранённую историю этой машины.' : coach.status === 'incomplete'
-          ? 'Бои уже набраны, но часть результатов неполная. Сравнение появится, когда урон будет известен во всех боях двух периодов.'
-          : <>Нужно ещё <strong data-testid="coach-remaining">{coach.remaining_battles}</strong> боёв на этой машине для двух периодов по {coach.window}. По одному результату вывод о прогрессе не делается.</>}</p>
-        <div className="coach-coverage"><span>Последний период: {coach.coverage.current_battles}/{coach.window} боёв · урон известен в {coach.coverage.current_damage}</span><span>Предыдущий: {coach.coverage.previous_battles}/{coach.window} · урон известен в {coach.coverage.previous_damage}</span></div>
+        {coach.status === 'mixed_modes' || coach.status === 'incomplete' ? <p>{coach.status === 'mixed_modes' ? 'Сравнение скрыто: разные известные типы боёв. Рекорды ниже относятся ко всей сохранённой истории машины.' : 'Сравнение появится, когда урон будет известен во всех боях двух периодов.'}</p>
+          : <div className="coach-count"><span>Нужно ещё</span><strong data-testid="coach-remaining">{coach.remaining_battles}</strong><span>{'боёв на этой машине (два периода по ' + coach.window + ')'}</span></div>}
+        <div className="coach-coverage"><span>{'Последний период: ' + coach.coverage.current_battles + '/' + coach.window + ' · урон известен в ' + coach.coverage.current_damage}</span><span>{'Предыдущий: ' + coach.coverage.previous_battles + '/' + coach.window + ' · урон известен в ' + coach.coverage.previous_damage}</span></div>
       </div>}
-      <Records coach={coach} />
+      <Records coach={coach} /></>}
       <div className="coach-foot"><p>По сохранённым боям на этой машине. Карты и условия боёв могут различаться.</p><button type="button" className="coach-explain-button" aria-expanded={explain} aria-controls="coach-explanation" onClick={() => setExplain(!explain)}>{explain ? 'Скрыть пояснение' : 'Как рассчитано'}</button></div>
       {explain && <div id="coach-explanation" className="coach-explanation">
-        <p><strong>Сравнение.</strong> Последние {coach.window} боёв сопоставляются с {coach.window} боями непосредственно перед ними. Нужен известный урон во всех {coach.required_battles} результатах; пропуски не превращаются в нули.</p>
-        <p><strong>Типы боёв.</strong> При разных известных типах в двух периодах сравнение скрывается. Если тип не известен, одинаковые условия не гарантированы.</p>
-        <p><strong>Среднее и медиана.</strong> Среднее учитывает каждый результат. Медиана — середина отсортированного ряда; она меньше зависит от одного очень высокого значения. Разница описывает эти периоды, а не доказывает изменение навыка.</p>
-        <p><strong>Рекорды.</strong> Только среди сохранённых боёв этой машины. Серия — любые {coach.window} последовательных результатов с известным уроном. Первая полная серия задаёт исходную точку; равенство прежнему максимуму новым рекордом не считается.</p>
-        <p><strong>Опыт.</strong> Поле из результата может учитывать бонусы и не нормализовано до базового опыта. В выводах о прогрессе оно не используется. Порядок боёв определяется временем получения результата.</p>
+        <p>{'Сравнение: два последовательных периода по ' + coach.window + ' боёв. Нужен известный урон во всех ' + coach.required_battles + ' результатах; пропуски не считаются нулём.'}</p>
+        <p>При разных известных типах боёв сравнение скрывается. Неизвестный тип не гарантирует одинаковые условия.</p>
+        <p>Среднее учитывает каждый результат; медиана — середина отсортированного ряда. Разница не доказывает изменение навыка.</p>
+        <p>{'Рекорды: только сохранённые бои этой машины и полные серии по ' + coach.window + ' боёв. Первая серия и равенство максимуму не являются новым рекордом.'}</p>
+        <p>Опыт может учитывать бонусы и не используется в выводах. Порядок определяется временем получения результата.</p>
       </div>}
     </>}
   </section>;

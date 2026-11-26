@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="460" viewBox="0 0 1120 460" role="img" aria-labelledby="title desc">
+<title id="title">Архитектура TankSession Analytics</title><desc id="desc">Игровые события и опциональный кэш поступают в Python-адаптер. Проверенные собственные результаты записываются в журнал JSONL, превращаются в снимок статистики и выводятся в React-интерфейс через Gameface или локальный браузерный просмотр.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 Z" fill="#9eaf90"/></marker></defs>
+<rect width="1120" height="460" rx="14" fill="#151b17"/>
+<g font-family="Arial, sans-serif">
+<text x="36" y="40" font-size="23" font-weight="bold" fill="#e9eee5">TankSession Analytics · архитектура</text>
+<text x="36" y="65" font-size="13" fill="#a5b39d">От результата собственного боя до локального отчёта · rc9</text>
+<g stroke="#9eaf90" stroke-width="2" fill="none" marker-end="url(#arrow)">
+<path d="M262 132 H318"/><path d="M262 227 H289 V165 H318" stroke-dasharray="5 5"/>
+<path d="M548 144 H610"/><path d="M726 196 V238 H433 V278"/>
+<path d="M550 329 H610"/><path d="M610 349 H550" stroke-dasharray="4 4"/>
+</g>
+<g fill="#202920" stroke="#43513e">
+<rect x="36" y="91" width="226" height="81" rx="8"/><rect x="36" y="187" width="226" height="81" rx="8"/>
+<rect x="318" y="91" width="230" height="105" rx="8"/>
+<rect x="610" y="91" width="232" height="105" rx="8"/>
+<rect x="318" y="278" width="232" height="96" rx="8"/>
+<rect x="610" y="278" width="232" height="96" rx="8"/>
+<rect x="886" y="91" width="198" height="283" rx="8" fill="#282a20" stroke="#71603e"/>
+</g>
+<g fill="#e2ebdc" font-size="16" font-weight="bold">
+<text x="52" y="116">Игровой клиент</text><text x="52" y="212">Кэш результатов</text>
+<text x="334" y="116">Python-адаптер</text><text x="626" y="116">JSONL · история</text>
+<text x="334" y="303">Снимок статистики</text><text x="626" y="303">React / TypeScript</text>
+<text x="902" y="116" fill="#ead0a0">Контроль данных</text>
+</g>
+<g fill="#aab9a3" font-size="12.5">
+<text x="52" y="139">Событие собственного боя</text><text x="52" y="156">и подтверждённый аккаунт</text>
+<text x="52" y="235">Событие ангара + запрос</text><text x="52" y="252">Экспериментальный opt-in</text>
+<text x="334" y="140">game.py · recorder.py</text><text x="334" y="158">Нормализация, проверка</text><text x="334" y="176">владельца и арены</text>
+<text x="626" y="140">storage.py · pending</text><text x="626" y="158">Дедупликация, ревизии,</text><text x="626" y="176">незакрытые ожидания</text>
+<text x="334" y="327">presentation.py · coach.py</text><text x="334" y="345">JSON-контракт 1, расчёты,</text><text x="334" y="362">фильтры и цели</text>
+<text x="626" y="327">Gameface в ангаре</text><text x="626" y="345">или браузерный Preview</text><text x="626" y="362">4 вкладки и графики</text>
+</g>
+<g fill="#b8c3aa" font-size="13">
+<circle cx="909" cy="145" r="3" fill="#b79b63"/><text x="920" y="150">Свой аккаунт</text>
+<circle cx="909" cy="177" r="3" fill="#b79b63"/><text x="920" y="182">Нет внешнего сервера</text>
+<circle cx="909" cy="209" r="3" fill="#b79b63"/><text x="920" y="214">Пропуск ≠ ноль</text>
+<circle cx="909" cy="241" r="3" fill="#b79b63"/><text x="920" y="246">Запросы ограничены</text>
+<circle cx="909" cy="273" r="3" fill="#b79b63"/><text x="920" y="278">CI: Python 2.7/3</text>
+<circle cx="909" cy="305" r="3" fill="#b79b63"/><text x="920" y="310">TypeScript, Playwright</text>
+<text x="902" y="349" font-size="11" fill="#d0b583">Совместимость игры</text><text x="902" y="364" font-size="11" fill="#d0b583">проверяется отдельно.</text>
+</g>
+<path d="M36 404 H1084" stroke="#334034"/>
+<text x="36" y="431" font-size="12" fill="#9cae93">Сплошная стрелка — данные · пунктир — дополнительный путь / запрос фильтра · схема, не игровой скриншот</text>
+</g></svg>

@@ -23,6 +23,57 @@ def request(vehicle='', window=10, identifier='request-1'):
 
 
 class PresentationTests(unittest.TestCase):
+    def test_insights_from_first_battle_and_only_confirmed_account(self):
+        rows = [dict(battle(1, damage=0, outcome='loss'), assistance_radio=0),
+                dict(battle(2, damage=None, outcome='unknown'), assistance_track=100),
+                dict(battle(3, damage=700, outcome='win'), assistance_radio=200),
+                battle(4, outcome='win', damage=900),
+                battle(5, account='foreign', damage=9999, vehicle='Foreign tank')]
+        snapshot = build_snapshot(rows, 'own', pending_count=2, now=1701000000)
+        data = snapshot['insights']
+        self.assertEqual(data['recent_damage'], [
+            {'battle': 1, 'damage': 0, 'outcome': 'loss'},
+            {'battle': 2, 'damage': None, 'outcome': 'unknown'},
+            {'battle': 3, 'damage': 700, 'outcome': 'win'},
+            {'battle': 4, 'damage': 900, 'outcome': 'win'}])
+        self.assertEqual(data['streak'], {'outcome': 'win', 'length': 2})
+        self.assertEqual(data['pending_count'], 2)
+        self.assertEqual(data['assistance_radio'], {'samples': 2, 'average': 100.0})
+        self.assertEqual(data['assistance_track'], {'samples': 1, 'average': 100.0})
+        self.assertEqual(data['tanks'][0]['summary']['losses'], 1)
+        self.assertEqual(sum(row['summary']['battles'] for row in data['days']), 4)
+        self.assertNotIn('Foreign tank', json.dumps(data))
+        first = build_snapshot(rows[:1], 'own', now=1701000000)['insights']
+        self.assertEqual(first['recent_damage'][0]['damage'], 0)
+        self.assertEqual(first['streak'], {'outcome': 'loss', 'length': 1})
+        unavailable = build_snapshot(rows, None, pending_count=8,
+                                     now=1701000000)['insights']
+        self.assertIsNone(unavailable['pending_count'])
+        self.assertEqual(unavailable['recent_damage'], [])
+        self.assertEqual(unavailable['streak']['length'], 0)
+        self.assertEqual(unavailable['days'], [])
+        self.assertEqual(unavailable['tanks'], [])
+
+    def test_insights_limits_order_scope_and_unknown_streak(self):
+        rows = [battle(i, vehicle='IS-7', damage=i) for i in range(100)]
+        rows.append(battle(100, outcome='unknown', damage=None))
+        rows.append(battle(101, vehicle='Other', damage=9000))
+        data = build_snapshot(rows, 'own', request('IS-7'),
+                              now=1701000000)['insights']
+        self.assertEqual(len(data['recent_damage']), 24)
+        self.assertEqual(data['recent_damage'][0]['battle'], 78)
+        self.assertEqual(data['recent_damage'][-1]['battle'], 101)
+        self.assertEqual(data['streak'], {'outcome': None, 'length': 0})
+        self.assertEqual(len(data['tanks']), 1)
+        self.assertEqual(data['tanks'][0]['label'], 'IS-7')
+        self.assertLessEqual(len(data['days']), 14)
+        self.assertNotIn('insights', build_snapshot(rows, 'own',
+                         include_insights=False, now=1701000000))
+        for invalid in (-1, True, '2'):
+            with self.assertRaises(ValueError):
+                build_snapshot(rows, 'own', pending_count=invalid,
+                               now=1701000000)
+
     def test_default_request_and_strict_protocol_boundary(self):
         self.assertEqual(validate_request(None), request(identifier='initial'))
         for value in ([], '', {'protocol': True, 'request_id': 'a'},
