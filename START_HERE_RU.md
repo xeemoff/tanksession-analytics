@@ -1,8 +1,8 @@
-# Быстрый старт — TankSession Analytics 0.4.0-rc7
+# Быстрый старт — TankSession Analytics 0.4.0-rc8
 
 ## Посмотреть новый экран
 
-В успешном запуске [GitHub Actions](https://github.com/xeemoff/tanksession-analytics/actions/workflows/tests.yml) скачай artifact `tanksession-hangar-preview-...`, затем распакуй вложенный `TankSession_Analytics_0.4.0-rc7_Preview.zip`. Нужны Python 3.9+ и браузер. Запусти **demo_hangar.cmd** или:
+В успешном запуске [GitHub Actions](https://github.com/xeemoff/tanksession-analytics/actions/workflows/tests.yml) скачай artifact `tanksession-hangar-preview-...`, затем распакуй вложенный `TankSession_Analytics_0.4.0-rc8_Preview.zip`. Нужны Python 3.9+ и браузер. Запусти **demo_hangar.cmd** или:
 
 ```powershell
 python tools/preview_ui.py --demo
@@ -78,7 +78,7 @@ python tools/benchmark.py --battles 100000
 python tools/build.py --python2 "C:\Python27\python.exe"
 ```
 
-Пакет создаётся в `dist/ru.tanksession.analytics_0.4.0-rc7.mtmod`. Автоматической установки нет. Восстановление через игровой кэш остаётся выключенным до проверки его API.
+Пакет создаётся в `dist/ru.tanksession.analytics_0.4.0-rc8.mtmod`. Автоматической установки нет. Восстановление через игровой кэш остаётся выключенным до проверки его API.
 
 Для обсуждения неисправностей достаточно версии клиента, описания сценария и обезличенных счётчиков:
 
