@@ -428,8 +428,14 @@ def _ui_snapshot(account, request):
     # snapshot, including if a provider caused a re-entrant client event.
     if account != _ui_account() or _store is None:
         return build_snapshot([], None, request=request, source='game')
+    # Account-wide unresolved entries include partial records and old
+    # expectations. Do not claim they are completed or definitely recoverable.
+    pending_count = None
+    if _pending is not None:
+        pending_count = sum(1 for item in _pending.pending.values()
+                            if _verified_account(item.get('context', {}).get('account_id')) == account)
     return build_snapshot(list(_store.records), account, request=request,
-                          goals=_ui_goals(),
+                          goals=_ui_goals(), pending_count=pending_count,
                           diagnostics=dict(_store.diagnostics), source='game')
 
 

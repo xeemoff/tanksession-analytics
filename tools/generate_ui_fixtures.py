@@ -23,7 +23,10 @@ def fixtures():
         return build_snapshot(records, account,
                               request={'protocol': 1, 'request_id': 'fixture',
                                        'vehicle': vehicle, 'window': window},
-                              goals=goals, source='demo', now=observed)
+                              goals=goals, source='demo', now=observed,
+                              # Preserve the legacy fixtures to exercise old hosts.
+                              # Live preview + Python tests exercise the extension.
+                              include_insights=False)
 
     incomplete = copy.deepcopy(rows)
     for index, row in enumerate(incomplete):

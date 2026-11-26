@@ -27,6 +27,20 @@ export interface Coach {
     new_window_record: boolean;
   };
 }
+export type ObservedOutcome = 'win' | 'loss' | 'draw' | 'unknown';
+export interface BattlePoint { battle: number; damage: number | null; outcome: ObservedOutcome }
+export interface InsightGroup { label: string; summary: Summary }
+export interface AssistanceMetric { samples: number; average: number | null }
+export interface Insights {
+  version: 1;
+  pending_count: number | null;
+  recent_damage: BattlePoint[];
+  streak: { outcome: Exclude<ObservedOutcome, 'unknown'> | null; length: number };
+  days: InsightGroup[];
+  tanks: InsightGroup[];
+  assistance_radio: AssistanceMetric;
+  assistance_track: AssistanceMetric;
+}
 export interface Snapshot {
   protocol: 1; source: 'game' | 'demo'; status: 'ready' | 'empty' | 'account_unavailable';
   request_id: string; selection: Selection;
@@ -42,6 +56,7 @@ export interface Snapshot {
   history: Array<{ timestamp: number; vehicle: string; outcome: string | null; damage: number | null; xp: number | null }>;
   quality: { total_records: number; incomplete_records: number; invalid_records: number; conflicts: number };
   coach?: Coach;
+  insights?: Insights;
   updated_at: number;
 }
 
@@ -133,6 +148,53 @@ function coachScope(value: Coach, selected: Selection, status: Snapshot['status'
     && value.vehicle === vehicle && value.battles === battles && value.battles === available.battles;
 }
 
+function validInsights(value: unknown, totals: Summary, status: Snapshot['status'], selected: Selection): value is Insights {
+  if (!record(value) || value.version !== 1
+      || !(value.pending_count === null || count(value.pending_count))
+      || !array(value.recent_damage, 24)
+      || value.recent_damage.length !== Math.min(24, totals.battles)) return false;
+  if (!value.recent_damage.every((point, index) => record(point)
+      && point.battle === totals.battles - Math.min(24, totals.battles) + index + 1
+      && (point.damage === null || count(point.damage))
+      && ['win', 'loss', 'draw', 'unknown'].includes(point.outcome as string))) return false;
+  const streak = value.streak;
+  if (!record(streak) || !count(streak.length)
+      || ![null, 'win', 'loss', 'draw'].includes(streak.outcome as string | null)
+      || (streak.outcome === null) !== (streak.length === 0)) return false;
+  const points = value.recent_damage as unknown as BattlePoint[];
+  const latest = points.length ? points[points.length - 1].outcome : 'unknown';
+  if (streak.outcome !== (latest === 'unknown' ? null : latest)) return false;
+  if (streak.outcome !== null) {
+    const bound = streak.outcome === 'win' ? totals.wins : streak.outcome === 'loss' ? totals.losses : totals.draws;
+    if (streak.length > bound) return false;
+    let tail = 0;
+    for (let i = points.length - 1; i >= 0 && points[i].outcome === latest; i--) tail++;
+    if (tail < points.length ? streak.length !== tail : streak.length < tail) return false;
+  }
+  const groups = (items: unknown, limit: number, days: boolean): boolean => {
+    if (!array(items, limit)) return false;
+    const labels = new Set<string>();
+    let total = 0;
+    for (const item of items) {
+      if (!record(item) || !text(item.label, days ? 10 : 128) || !item.label
+          || (days && !/^\d{4}-\d{2}-\d{2}$/.test(item.label))
+          || (!days && !!selected.vehicle && item.label !== selected.vehicle)
+          || labels.has(item.label) || !summary(item.summary) || item.summary.battles === 0
+          || item.summary.wins + item.summary.losses + item.summary.draws !== item.summary.known_outcomes) return false;
+      labels.add(item.label);
+      total += item.summary.battles;
+    }
+    return total <= totals.battles;
+  };
+  if (!groups(value.days, 14, true) || !groups(value.tanks, 20, false)) return false;
+  const assistance = (item: unknown) => record(item) && count(item.samples)
+    && item.samples <= totals.battles && metric(item.average)
+    && ((item.average === null) === (item.samples === 0));
+  if (!assistance(value.assistance_radio) || !assistance(value.assistance_track)) return false;
+  if (status === 'account_unavailable' && (value.pending_count !== null || totals.battles !== 0)) return false;
+  return true;
+}
+
 export function decodePayload(raw: unknown): unknown {
   if (typeof raw === 'string') {
     if (raw.length > 512 * 1024) throw new Error('Ответ превышает допустимый размер.');
@@ -165,6 +227,8 @@ export function parseSnapshot(raw: unknown): Snapshot {
   // Optional additive protocol-1 extension; older hosts remain readable.
   if ('coach' in raw && (!coach(raw.coach, raw.selection.window)
       || !coachScope(raw.coach, raw.selection, raw.status as Snapshot['status'], raw.vehicles as Snapshot['vehicles'], raw.summary.battles))) return fail();
+  if ('insights' in raw && !validInsights(raw.insights, raw.summary,
+      raw.status as Snapshot['status'], raw.selection)) return fail();
   return raw as unknown as Snapshot;
 }
 

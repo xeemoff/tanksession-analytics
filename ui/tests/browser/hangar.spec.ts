@@ -156,3 +156,26 @@ test('native-sized panel exposes sections and twelve history rows without wheel 
   await page.getByRole('button', { name: 'Прогресс', exact: true }).click();
   await expect(page.getByTestId('coach-card')).toBeVisible();
 });
+
+test('live Python preview exposes raw damage chart and grouped summaries without scrolling', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1120, height: 800 });
+  const response = await request.get('/api/snapshot?window=10&vehicle=&request_id=expected');
+  const data = await response.json();
+  expect(data.insights.recent_damage.length).toBe(24);
+  await page.goto('/?demo=1');
+  await expect(page.getByTestId('battle-count')).toBeVisible();
+  await page.getByRole('button', { name: 'Динамика и цели', exact: true }).click();
+  const bars = page.getByRole('group', { name: 'Урон отдельных боёв' }).getByRole('button');
+  await expect(bars).toHaveCount(24);
+  await bars.first().click();
+  await expect(page.getByTestId('damage-detail')).toContainText('Бой ' + data.insights.recent_damage[0].battle + ' ·');
+  await page.getByRole('button', { name: 'Скользящее среднее', exact: true }).click();
+  await expect(page.getByRole('group', { name: 'Урон отдельных боёв' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Сводка', exact: true }).click();
+  await expect(page.getByTestId('outcome-tally')).toContainText(data.summary.losses + ' Пор');
+  await expect(page.getByRole('table', { name: 'Сводка результатов' })).toBeVisible();
+  await page.getByRole('button', { name: 'По технике', exact: true }).click();
+  await expect(page.getByRole('table', { name: 'Сводка результатов' })).toContainText('IS-7');
+  await page.getByRole('button', { name: 'По дням', exact: true }).click();
+  await expect(page.getByRole('columnheader', { name: 'Дата получения' })).toBeVisible();
+});

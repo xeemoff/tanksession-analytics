@@ -11,7 +11,7 @@ import time
 
 from .analytics import rolling_damage, sort_records, vehicle_table, window_comparison
 from .coach import build_coach
-from .core import _as_text, long_type, record_is_complete, summarize, validate_record
+from .core import _as_text, by_day, long_type, record_is_complete, summarize, validate_record
 from .goals import evaluate_goals, validate_goals
 from .recorder import _verified_account
 
@@ -26,6 +26,9 @@ MAX_TIMESTAMP = 253402300799
 MAX_VEHICLES = 2048
 MAX_HISTORY = 12
 MAX_SERIES = 60
+MAX_RAW_POINTS = 24
+MAX_INSIGHT_DAYS = 14
+MAX_INSIGHT_VEHICLES = 20
 _REQUEST_ID = re.compile(r'^[A-Za-z0-9_.:-]{1,64}\Z')
 _REQUEST_FIELDS = frozenset(('protocol', 'request_id', 'vehicle', 'window'))
 
@@ -114,8 +117,44 @@ def _empty_snapshot(request, source, now, status):
     }
 
 
+def _build_insights(selected, pending_count):
+    """Describe the saved history only, never infer missing matches."""
+    size = len(selected)
+    recent = selected[-MAX_RAW_POINTS:]
+    outcome = selected[-1]['outcome'] if selected else None
+    length = 0
+    if outcome in ('win', 'loss', 'draw'):
+        for row in reversed(selected):
+            if row['outcome'] != outcome:
+                break
+            length += 1
+    else:
+        outcome = None
+    days = by_day(selected)
+
+    def assistance(field):
+        values = [row[field] for row in selected if row[field] is not None]
+        return {'samples': len(values),
+                'average': round(sum(values) / float(len(values)), 1) if values else None}
+
+    return {
+        'version': 1,
+        'pending_count': pending_count,
+        'recent_damage': [{'battle': size - len(recent) + index + 1,
+                           'damage': row['damage'], 'outcome': row['outcome']}
+                          for index, row in enumerate(recent)],
+        'streak': {'outcome': outcome, 'length': length},
+        'days': [{'label': day, 'summary': days[day]}
+                 for day in sorted(days, reverse=True)[:MAX_INSIGHT_DAYS]],
+        'tanks': [{'label': name, 'summary': stats}
+                  for name, stats in vehicle_table(selected)[:MAX_INSIGHT_VEHICLES]],
+        'assistance_radio': assistance('assistance_radio'),
+        'assistance_track': assistance('assistance_track'),
+    }
+
+
 def build_snapshot(records, account_id, request=None, goals=None, diagnostics=None,
-                   source='game', now=None):
+                   source='game', now=None, pending_count=None, include_insights=True):
     """Return protocol-1 data for one confirmed account and one UI selection.
 
     ``total_records`` and ``incomplete_records`` describe the selected history.
@@ -133,7 +172,12 @@ def build_snapshot(records, account_id, request=None, goals=None, diagnostics=No
     observed = _observed_time(now)
     account = _confirmed_account(account_id)
     if account is None:
-        return _empty_snapshot(request, source, observed, 'account_unavailable')
+        snapshot = _empty_snapshot(request, source, observed, 'account_unavailable')
+        if include_insights:
+            snapshot['insights'] = _build_insights([], None)
+        return snapshot
+    if pending_count is not None:
+        pending_count = _counter(pending_count, 'pending_count')
     if diagnostics is None:
         diagnostics = {}
     if not isinstance(diagnostics, dict):
@@ -210,4 +254,6 @@ def build_snapshot(records, account_id, request=None, goals=None, diagnostics=No
             'conflicts': conflicts,
         },
     })
+    if include_insights:
+        snapshot['insights'] = _build_insights(selected, pending_count)
     return snapshot
