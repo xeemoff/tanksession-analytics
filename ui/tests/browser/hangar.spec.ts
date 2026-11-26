@@ -3,20 +3,11 @@ import { mkdir } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Page } from '@playwright/test';
-import { createHash } from 'node:crypto';
 
-// Capture the actual browser render using only the synthetic preview data.
-// The temporary CI text transfer is removed after the docs assets are committed.
+// Capture the actual browser render using only synthetic preview data.
 async function captureDocumentation(page: Page, name: string) {
   await mkdir('test-results', { recursive: true });
   await page.screenshot({ path: 'test-results/hangar-' + name + '.png', fullPage: true });
-  if (process.env.GITHUB_ACTIONS === 'true') {
-    const jpeg = await page.screenshot({ type: 'jpeg', quality: 86, fullPage: true });
-    const b64 = jpeg.toString('base64');
-    const chunks = b64.match(/.{1,2048}/g) || [];
-    console.log('TSA_DOC_META:' + name + ':' + chunks.length + ':' + jpeg.length + ':' + createHash('sha256').update(jpeg).digest('hex'));
-    chunks.forEach((part, index) => console.log('TSA_DOC_CHUNK:' + name + ':' + index + ':' + part));
-  }
 }
 
 async function serveCoachFixture(page: Page, name: string) {
