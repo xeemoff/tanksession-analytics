@@ -1,4 +1,4 @@
-# Проверка TankSession Analytics 0.4.0-rc6 в «Мире танков»
+# Проверка TankSession Analytics 0.4.0-rc7 в «Мире танков»
 
 **Проверка реальной игры ещё не выполнена.** Этот документ — план испытаний. Успешный CI подтверждает только перечисленные автоматические проверки для конкретного коммита. Результат установки и игровые API нужно отдельно записать в [протокол совместимости](CLIENT_VALIDATION_RU.md).
 
@@ -21,8 +21,8 @@ python tools/launch_dashboard.py --demo
 В архиве находятся `.mtmod` и соответствующий `.sha256`. В PowerShell вычисли хеш пакета и сравни его с текстом контрольной суммы:
 
 ```powershell
-Get-FileHash .\ru.tanksession.analytics_0.4.0-rc6.mtmod -Algorithm SHA256
-Get-Content .\ru.tanksession.analytics_0.4.0-rc6.mtmod.sha256
+Get-FileHash .\ru.tanksession.analytics_0.4.0-rc7.mtmod -Algorithm SHA256
+Get-Content .\ru.tanksession.analytics_0.4.0-rc7.mtmod.sha256
 ```
 
 Запиши SHA-256 и коммит в протокол. Это кандидат для испытания, а не подтверждённый игровой релиз. Артефакты Actions хранятся 14 дней.
@@ -35,7 +35,7 @@ npm ci
 npm run build
 cd ..
 python tools/build.py --python2 "C:\Python27\python.exe"
-python tools/build.py --verify "dist\ru.tanksession.analytics_0.4.0-rc6.mtmod"
+python tools/build.py --verify "dist\ru.tanksession.analytics_0.4.0-rc7.mtmod"
 ```
 
 Сборка проверяет собственный скомпилированный код. `--verify` проверяет состав, метаданные, CRC и заголовки; он не исполняет архив и не подтверждает API или поведение игры. Версию встроенного интерпретатора своего клиента также нужно подтвердить.
@@ -82,6 +82,6 @@ python tools/maintain_data.py --data "D:\your-folder\battles.jsonl"
 
 ## 6. Удаление и условия релиза
 
-При закрытой игре удали только установленный `ru.tanksession.analytics_0.4.0-rc6.mtmod`. Проверь запуск без него. История удаляется отдельно по желанию пользователя.
+При закрытой игре удали только установленный `ru.tanksession.analytics_0.4.0-rc7.mtmod`. Проверь запуск без него. История удаляется отдельно по желанию пользователя.
 
 К проверенному игровому релизу можно переходить после подтверждения загрузки, игровых полей, отсутствия дублей и смешения аккаунтов, испытания удаления и проверки действующих правил. Добавь настоящие скриншоты/видео и заполненный протокол. Сборка, демоданные и имитационные тесты сами по себе этого не заменяют.
