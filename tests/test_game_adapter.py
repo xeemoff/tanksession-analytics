@@ -117,6 +117,41 @@ class GameAdapterTests(unittest.TestCase):
         self.assertEqual(len(self.events.onAvatarReady.handlers), 0)
         self.assertEqual(len(self.events.onAccountBecomePlayer.handlers), 0)
 
+    def test_vehicle_type_identity_survives_a_late_hangar_result(self):
+        sys.modules['BigWorld'].entities[42].typeDescriptor = types.SimpleNamespace(
+            name='ussr:R04_T-34', type=types.SimpleNamespace(compactDescr=257))
+        self.game.init()
+        self.events.onAccountBecomePlayer.fire()
+        self.events.onAvatarReady.fire()
+        context = self.game._pending.context(1234)
+        self.assertEqual(context['vehicle_id'], 'type:257')
+        self.assertEqual(context['player_vehicle_id'], '42')
+        self.player.playerVehicleID = None
+        self.player.arenaUniqueID = None
+        sys.modules['BigWorld'].entities.clear()
+        self.events.onBattleResultsReceived.fire(True, {
+            'arenaUniqueID': 1234, 'common': {'winnerTeam': 1},
+            'personal': {42: {'typeCompDescr': 257, 'team': 1,
+                              'damageDealt': 1111, 'xp': 400}}})
+        self.assertEqual(len(self.game._store.records), 1)
+        self.assertEqual(self.game._store.records[0]['vehicle_id'], 'type:257')
+        self.assertEqual(self.game._store.records[0]['vehicle'], 'ussr:R04_T-34')
+
+    def test_conflicting_result_type_does_not_replace_saved_battle_context(self):
+        sys.modules['BigWorld'].entities[42].typeDescriptor = types.SimpleNamespace(
+            name='ussr:R04_T-34', type=types.SimpleNamespace(compactDescr=257))
+        self.game.init()
+        self.events.onAccountBecomePlayer.fire()
+        self.events.onAvatarReady.fire()
+        self.player.playerVehicleID = None
+        self.player.arenaUniqueID = None
+        self.events.onBattleResultsReceived.fire(True, {
+            'arenaUniqueID': 1234, 'common': {'winnerTeam': 1},
+            'personal': {42: {'typeCompDescr': 513, 'team': 1,
+                              'damageDealt': 9999, 'xp': 400}}})
+        self.assertEqual(self.game._store.records, [])
+        self.assertEqual(self.game._pending.context(1234)['vehicle_id'], 'type:257')
+
 
 
     def test_hangar_identity_is_retained_for_battle_avatar(self):

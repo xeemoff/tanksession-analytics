@@ -18,6 +18,8 @@ from gui.mods.tanksession_analytics.core import summarize, result_rejection_reas
 from gui.mods.tanksession_analytics.storage import BattleStore, PendingJournal, default_path
 from gui.mods.tanksession_analytics.recorder import ResultRecorder, _verified_account
 from gui.mods.tanksession_analytics.recovery import CacheRecovery
+from gui.mods.tanksession_analytics.vehicles import (identity_from_internal_name,
+                                                   identity_from_type_descr)
 
 _PREFIX = '[TankSession] '
 _store = None
@@ -119,6 +121,10 @@ def _context():
                 desc = getattr(entity, 'typeDescriptor', None)
                 if desc is not None:
                     context['vehicle_name'] = getattr(desc, 'name', None)
+                    vehicle_type = getattr(desc, 'type', None)
+                    context['vehicle_id'] = (identity_from_type_descr(
+                        getattr(vehicle_type, 'compactDescr', None)) or
+                        identity_from_internal_name(context['vehicle_name']))
             except Exception:
                 pass
     except Exception:

@@ -1,6 +1,24 @@
 import { ReactNode, useState } from 'react';
-import { Snapshot } from './contracts';
+import { ExtendedMetrics, Snapshot } from './contracts';
 import { formatNumber, signed, timeLabel } from './format';
+
+export function EconomyMetrics({ fields, battles }: { fields: ExtendedMetrics['fields']; battles: number }) {
+  const rows: Array<{ key: keyof ExtendedMetrics['fields']; label: string; detail: string }> = [
+    { key: 'xp_base', label: 'Средний базовый опыт', detail: 'По известным значениям.' },
+    { key: 'xp_bonus', label: 'Средний бонусный опыт', detail: 'Сверх базового опыта после корректировок.' },
+    { key: 'credits_gross', label: 'Кредиты начислены в среднем', detail: 'До расходов, если значение получено.' },
+    { key: 'credits_net', label: 'Итог кредитов в среднем', detail: 'Фактические списания в кредитах. Запасы со склада не оцениваются.' }
+  ];
+  return <div className="detail-grid">
+    {rows.map(({ key, label, detail }) => {
+      const field = fields[key];
+      return <div className="detail-metric" key={key} data-testid={'economy-' + key}>
+        <span>{label}</span><strong>{formatNumber(field?.average ?? null)}</strong>
+        <small>{'Известно в ' + (field?.samples ?? 0) + ' из ' + battles + ' боёв. ' + detail}</small>
+      </div>;
+    })}
+  </div>;
+}
 
 export function ExtendedMetricsView({ snapshot }: { snapshot: Snapshot }) {
   const [tab, setTab] = useState<'combat' | 'economy' | 'maps'>('combat');
@@ -23,11 +41,7 @@ export function ExtendedMetricsView({ snapshot }: { snapshot: Snapshot }) {
       {metric('Попадания от выстрелов', percent(metrics.accuracy.rate), metrics.accuracy.samples, metrics.accuracy.hits + ' попаданий / ' + metrics.accuracy.shots + ' выстрелов.')}
       {metric('Пробития от попаданий', percent(metrics.penetration.rate), metrics.penetration.samples, metrics.penetration.penetrations + ' пробитий / ' + metrics.penetration.hits + ' попаданий.')}
     </div>}
-    {tab === 'economy' && <div className="detail-grid">
-      {metric('Средний базовый опыт', formatNumber(metrics.fields.xp_base.average), metrics.fields.xp_base.samples, 'Отдельное поле, без расчёта по бонусам.')}
-      {metric('Кредиты начислены в среднем', formatNumber(metrics.fields.credits_gross.average), metrics.fields.credits_gross.samples, 'До расходов, если значение получено.')}
-      {metric('Итог кредитов в среднем', formatNumber(metrics.fields.credits_net.average), metrics.fields.credits_net.samples, 'Может быть отрицательным.')}
-    </div>}
+    {tab === 'economy' && <EconomyMetrics fields={metrics.fields} battles={snapshot.summary.battles} />}
     {tab === 'maps' && <>
       {metrics.maps.length === 0 ? <div className="chart-empty"><strong>Карты ещё не определены</strong><span>Записи без карты остаются в общей истории.</span></div> : <div className="history-table compact-summary" role="table" aria-label="Результаты по картам">
         <div className="history-row history-head" role="row"><span role="columnheader">Карта</span><span role="columnheader">Бои</span><span role="columnheader">Побед, %</span><span role="columnheader">Ср. урон</span></div>
@@ -45,6 +59,7 @@ const sessionReasons = {
   incomplete: 'Урон известен не во всех боях двух сессий. Сравнение пока недоступно.',
   mixed_modes: 'В двух сессиях различаются или смешаны игровые режимы. Сравнение не выполняется.',
   mode_unknown: 'Режим части боёв неизвестен. Сравнение пока недоступно.',
+  identity_ambiguous: 'Название связано с разной техникой. Для сравнения выберите машину с подтверждённым идентификатором. Старая история сохранена.',
   ready: 'Сравнение двух последних сессий на одной машине.'
 };
 

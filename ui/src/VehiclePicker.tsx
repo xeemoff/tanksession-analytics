@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Snapshot } from './contracts';
-import { vehicleLabel } from './vehicleLabel';
+import { vehicleLabel, vehicleLabelFor } from './vehicleLabel';
 const PAGE_SIZE = 5;
 
 export function VehiclePicker({ vehicles, selected, disabled, onSelect }: {
@@ -38,12 +38,12 @@ export function VehiclePicker({ vehicles, selected, disabled, onSelect }: {
     <span className="field-label">ТЕХНИКА</span>
     <button className="picker-trigger" type="button" aria-haspopup="listbox" aria-expanded={open}
       aria-label="Выбрать танк" disabled={disabled} onClick={() => { setPage(0); setOpen(!open); }}>
-      <span className="picker-label">{selected ? vehicleLabel(selected) : 'Вся техника'}</span><span className="chevron">v</span>
+      <span className="picker-label">{selected ? vehicleLabelFor(selected, vehicles) : 'Вся техника'}</span><span className="chevron">v</span>
     </button>
     {open && <div className="picker-menu" role="listbox" aria-label="Техника">
       <button type="button" role="option" aria-selected={!selected} onClick={() => choose('')}>Вся техника</button>
       {vehicles.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE).map(vehicle => <button type="button" role="option" aria-selected={selected === vehicle.name}
-        key={vehicle.name} title={vehicle.name} onClick={() => choose(vehicle.name)}><span className="picker-label">{vehicleLabel(vehicle.name)}</span><span className="muted">{vehicle.battles}</span></button>)}
+        key={vehicle.name} title={vehicleLabel(vehicle.name, vehicle.label)} onClick={() => choose(vehicle.name)}><span className="picker-label">{vehicleLabel(vehicle.name, vehicle.label)}</span><span className="muted">{vehicle.battles}</span></button>)}
       {pages > 1 && <div className="page-controls picker-pages">
         <button type="button" aria-label="Предыдущая страница техники" disabled={current === 0} onClick={() => setPage(current - 1)}>Назад</button>
         <span>{String(current + 1) + ' / ' + pages}</span>

@@ -29,7 +29,7 @@ class OptionalMetricTests(unittest.TestCase):
         self.assertEqual(record['xp'], 924)
         self.assertEqual(record['data_status'], 'complete')
         for field in ('map', 'kills', 'shots', 'direct_hits', 'penetrations',
-                      'xp_base', 'credits_gross', 'credits_net', 'survived'):
+                      'xp_base', 'xp_bonus', 'credits_gross', 'credits_net', 'survived'):
             self.assertIsNone(record[field], field)
 
     def test_explicit_reference_fields_are_normalized(self):
@@ -44,6 +44,7 @@ class OptionalMetricTests(unittest.TestCase):
         self.assertEqual(record['penetrations'], 3)
         self.assertTrue(record['survived'])
         self.assertEqual(record['xp_base'], 615)
+        self.assertEqual(record['xp_bonus'], 309)
         self.assertEqual(record['xp'], 924)
         self.assertEqual(record['credits_gross'], 12345)
         self.assertIsNone(record['credits_net'])
@@ -82,6 +83,38 @@ class OptionalMetricTests(unittest.TestCase):
         self.assertEqual(record['credits_gross'], 1000)
         self.assertIsNone(record['credits_net'])
 
+    def test_complete_own_random_result_gets_economy_with_verified_avatar(self):
+        from test_economy import complete_personal, complete_avatar
+        personal = dict(complete_personal(), damageDealt=83, team=1)
+        payload = {'arenaUniqueID': 1234, 'common': {'winnerTeam': 1, 'bonusType': 1},
+                   'personal': {42: personal, 'avatar': complete_avatar()}}
+        context = {'account_id': '88', 'player_vehicle_id': 42}
+        result = normalize_result(payload, context, observed_at=1700000000)
+        self.assertEqual((result['xp_base'], result['xp_bonus'], result['credits_net']),
+                         (900, 700, 14328))
+        self.assertEqual(result['data_status'], 'complete')
+        for owner in (99, None, True, 0):
+            payload['personal']['avatar']['accountDBID'] = owner
+            result = normalize_result(payload, context, observed_at=1700000000)
+            self.assertIsNone(result['credits_net'])
+            self.assertEqual(result['xp_bonus'], 700)
+
+    def test_avatar_credit_events_are_not_repeated_across_multiple_vehicles(self):
+        from test_economy import complete_personal, complete_avatar
+        personal = dict(complete_personal(), damageDealt=83, team=1)
+        payload = {'arenaUniqueID': 1234, 'common': {'winnerTeam': 1, 'bonusType': 1},
+                   'personal': {42: personal, 43: dict(personal), 'avatar': complete_avatar()}}
+        result = normalize_result(payload, {'account_id': '88', 'player_vehicle_id': 42},
+                                  observed_at=1700000000)
+        self.assertIsNone(result['credits_net'])
+
+    def test_no_received_xp_cannot_invent_bonus_from_the_legacy_base_xp_fallback(self):
+        result = self.normalize({'xp': None, 'baseXP': 600,
+                                 'originalXP': 700, 'achievementXP': 100})
+        self.assertEqual(result['xp'], 600)
+        self.assertEqual(result['xp_base'], 600)
+        self.assertIsNone(result['xp_bonus'])
+
     def test_invalid_optional_payload_values_do_not_erase_primary_stats(self):
         record = self.normalize({'kills': True, 'shots': -1,
                                  'directHits': 1.5, 'piercings': 'broken',
@@ -112,12 +145,13 @@ class OptionalMetricTests(unittest.TestCase):
                             ('credits_net', MAX_RECORD_INTEGER + 1),
                             ('credits_net', -MAX_RECORD_INTEGER - 2),
                             ('map', 123), ('map', 'x' * 129),
-                            ('kills', -1), ('xp_base', False)):
+                            ('kills', -1), ('xp_base', False), ('xp_bonus', False),
+                            ('xp_bonus', -1), ('xp_bonus', MAX_RECORD_INTEGER + 1)):
             self.assertIsNone(validate_record(dict(arena_id='1', **{name: value})), name)
 
     def test_optional_fields_do_not_change_primary_completeness(self):
         record = validate_record({'arena_id': '1', 'kills': 0, 'shots': 0,
-                                  'xp_base': 0, 'credits_gross': 0,
+                                  'xp_base': 0, 'xp_bonus': 0, 'credits_gross': 0,
                                   'credits_net': 0, 'survived': False})
         self.assertEqual(record['data_status'], 'incomplete')
 

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { GoalDefinition, PanelSection, Preferences, Snapshot, UserCommand } from './contracts';
 import { formatNumber } from './format';
 import { VehiclePicker } from './VehiclePicker';
-import { vehicleLabel } from './vehicleLabel';
+import { vehicleLabel, vehicleLabelFor } from './vehicleLabel';
 
 const sectionLabels: Record<PanelSection, string> = { progress: 'Прогресс', dynamics: 'Динамика и цели', history: 'История боёв', summary: 'Сводка', settings: 'Настройки' };
 const operationLabels: Record<string, string> = {
@@ -46,7 +46,7 @@ function AppearanceForm({ snapshot, busy, onCommand }: { snapshot: Snapshot; bus
     <div className="insight-switch startup-tabs" role="group" aria-label="Стартовый раздел">
       {(Object.keys(sectionLabels) as PanelSection[]).map(key => <button type="button" key={key} disabled={busy} className={key === tab ? 'active' : ''} aria-pressed={key === tab} onClick={() => setTab(key)}>{sectionLabels[key]}</button>)}
     </div>
-    <p className="settings-description">{'Будут сохранены фильтры сверху: ' + (snapshot.selection.vehicle ? vehicleLabel(snapshot.selection.vehicle) : 'вся техника') + ', окно ' + snapshot.selection.window + ' боёв.'}</p>
+    <p className="settings-description">{'Будут сохранены фильтры сверху: ' + (snapshot.selection.vehicle ? vehicleLabelFor(snapshot.selection.vehicle, snapshot.vehicles) : 'вся техника') + ', окно ' + snapshot.selection.window + ' боёв.'}</p>
     <button type="button" className="primary-button" disabled={busy} onClick={() => onCommand({ action: 'save_preferences', preferences: {
       vehicle: snapshot.selection.vehicle, window: snapshot.selection.window, tab, density, contrast
     } })}>Сохранить вид и фильтры</button>
@@ -69,6 +69,8 @@ function GoalEditor({ snapshot, busy, onCommand }: { snapshot: Snapshot; busy: b
   const windowValue = /^\d{1,4}$/.test(windowSize) ? Number(windowSize) : 0;
   const valid = !!selected && targetValue >= 1 && targetValue <= 50000 && windowValue >= 10 && windowValue <= 1000;
   const edit = (goal: GoalDefinition) => { setVehicle(goal.vehicle); setTarget(String(goal.target_avg_damage)); setWindowSize(String(goal.window)); setEditor(true); };
+  const label = (goal: GoalDefinition) => vehicleLabel(goal.vehicle,
+    goal.vehicle_label || snapshot.vehicles.find(item => item.name === goal.vehicle)?.label);
   return <section className="settings-card" aria-label="Настройка целей">
     <div className="section-heading"><h2>{editor ? 'Задать личную цель' : 'Личные цели'}</h2>
       <button type="button" disabled={busy} onClick={() => setEditor(!editor)}>{editor ? 'К списку целей' : 'Добавить цель'}</button></div>
@@ -83,9 +85,9 @@ function GoalEditor({ snapshot, busy, onCommand }: { snapshot: Snapshot; busy: b
     </> : <>
       {goals.length === 0 ? <div className="chart-empty"><strong>Цели пока не заданы</strong><span>Добавьте цель по среднему урону для выбранной машины.</span></div> : <div className="editable-goals">
         {goals.slice(current * 3, (current + 1) * 3).map(goal => <div className="editable-goal" key={goal.vehicle + ':' + goal.window}>
-          <div><strong>{vehicleLabel(goal.vehicle)}</strong><span>{formatNumber(goal.target_avg_damage) + ' урона · ' + goal.window + ' боёв'}</span></div>
-          <button type="button" disabled={busy} aria-label={'Изменить цель ' + vehicleLabel(goal.vehicle) + ' ' + goal.window} onClick={() => edit(goal)}>Изменить</button>
-          <button type="button" disabled={busy} aria-label={'Удалить цель ' + vehicleLabel(goal.vehicle) + ' ' + goal.window} onClick={() => onCommand({ action: 'delete_goal', goal: { vehicle: goal.vehicle, window: goal.window } })}>Удалить</button>
+          <div><strong>{label(goal)}</strong><span>{formatNumber(goal.target_avg_damage) + ' урона · ' + goal.window + ' боёв'}</span></div>
+          <button type="button" disabled={busy} aria-label={'Изменить цель ' + label(goal) + ' ' + goal.window} onClick={() => edit(goal)}>Изменить</button>
+          <button type="button" disabled={busy} aria-label={'Удалить цель ' + label(goal) + ' ' + goal.window} onClick={() => onCommand({ action: 'delete_goal', goal: { vehicle: goal.vehicle, window: goal.window } })}>Удалить</button>
         </div>)}
       </div>}
       <div className="page-controls"><button type="button" disabled={busy || current === 0} aria-label="Предыдущая страница целей" onClick={() => setPage(current - 1)}>Назад</button><span>{current + 1} / {pages}</span><button type="button" disabled={busy || current + 1 >= pages} aria-label="Следующая страница целей" onClick={() => setPage(current + 1)}>Далее</button></div>
@@ -104,7 +106,7 @@ export function SettingsView({ snapshot, busy, onCommand }: { snapshot: Snapshot
     </div>
     {tab === 'appearance' ? <AppearanceForm snapshot={snapshot} busy={busy} onCommand={onCommand} /> : tab === 'goals' ? <GoalEditor snapshot={snapshot} busy={busy} onCommand={onCommand} /> : <div className="settings-card">
       <div className="section-heading"><h2>Экспорт сохранённой истории</h2><span className="subtle-tag">CSV · UTF-8</span></div>
-      <p className="settings-description">{'Выборка: ' + (snapshot.selection.vehicle ? vehicleLabel(snapshot.selection.vehicle) : 'вся техника') + ' · ' + snapshot.summary.battles + ' записей текущего аккаунта.'}</p>
+      <p className="settings-description">{'Выборка: ' + (snapshot.selection.vehicle ? vehicleLabelFor(snapshot.selection.vehicle, snapshot.vehicles) : 'вся техника') + ' · ' + snapshot.summary.battles + ' записей текущего аккаунта.'}</p>
       <p className="settings-description">Будет сохранена вся выбранная история, включая старые страницы. Окно сравнения 10/30/100 не ограничивает экспорт.</p>
       <button type="button" className="primary-button" disabled={busy || snapshot.summary.battles === 0} onClick={() => onCommand({ action: 'export_csv' })}>Сохранить CSV</button>
       <p className="trend-note">{snapshot.source === 'demo' ? 'Демонстрационный CSV создаётся во временной папке локального сервера.' : 'Файл создаётся в подпапке exports рядом с журналом боёв. В игре: mods/configs/tanksession_analytics/exports.'} Идентификаторы аккаунта и арены в экспорт не включаются. Существующая история остаётся на месте.</p>

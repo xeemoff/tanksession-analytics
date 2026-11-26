@@ -54,7 +54,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-TankSession.ps
 При закрытой игре проверь SHA-256 файла против строки в `.sha256`, сохрани старые `ru.tanksession.analytics_*.mtmod` вне папки активных модов и скопируй новый пакет в `mods/<точная версия клиента>/`. Оставь одну версию TankSession. Не перемещай другие `.mtmod` и папку с историей.
 
 ```powershell
-(Get-FileHash ".\ru.tanksession.analytics_1.0.0-rc1.mtmod" -Algorithm SHA256).Hash
+(Get-FileHash ".\ru.tanksession.analytics_1.0.0-rc2.mtmod" -Algorithm SHA256).Hash
 ```
 
 Имя файла в команде замени на имя из своего архива. Совпадение хеша подтверждает целостность скачанного пакета относительно опубликованной контрольной суммы; оно не является подписью издателя и не заменяет игровой тест.

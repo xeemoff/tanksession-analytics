@@ -18,6 +18,7 @@ const PAGE_SIZE = 5;
 
 const goalLabels: Record<Goal['status'], string> = {
   no_data: 'Ожидаем результаты', in_progress: 'Набираем серию', insufficient_data: 'Недостаточно данных',
+  identity_ambiguous: 'Техника не определена однозначно',
   achieved: 'Цель достигнута', not_achieved: 'Цель ещё впереди'
 };
 
@@ -152,7 +153,7 @@ export function InsightsView({ snapshot }: { snapshot: Snapshot }) {
     {group !== 'totals' && <><div className="history-table insight-table" role="table" aria-label="Сводка результатов">
       <div className="history-row history-head" role="row"><span role="columnheader" className="insight-label">{group === 'days' ? 'Дата получения' : 'Техника'}</span><span role="columnheader">Бои</span><span role="columnheader">Победы</span><span role="columnheader">Поражения</span><span role="columnheader">Ничьи</span><span role="columnheader">Побед, %</span><span role="columnheader">Ср. урон</span></div>
       {rows.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE).map(row => <div key={row.label} className="history-row" role="row">
-        <span role="cell" className="insight-label">{group === 'days' ? row.label : vehicleLabel(row.label)}</span>
+        <span role="cell" className="insight-label">{group === 'days' ? row.label : vehicleLabel(row.label, row.vehicle_label)}</span>
         <span role="cell">{row.summary.battles}</span><span role="cell" className="positive">{row.summary.wins}</span><span role="cell" className="negative">{row.summary.losses}</span><span role="cell">{row.summary.draws}</span>
         <span role="cell">{formatNumber(row.summary.win_rate, 1)}</span><span role="cell">{formatNumber(row.summary.avg_damage)}</span>
       </div>)}
@@ -174,21 +175,26 @@ function GoalCard({ goals, selected, editable = false }: { goals: Goal[]; select
   </section>;
   const percent = Math.max(0, Math.min(100, (goal.avg_damage || 0) * 100 / goal.target));
   const achieved = goal.status === 'achieved';
+  const ambiguous = goal.status === 'identity_ambiguous';
   return <section className="goal-card">
     <div className="section-heading"><h2>Личная цель</h2><span className="subtle-tag">{goal.window} БОЁВ</span></div>
     {available.length > 1 && <div className="page-controls goal-navigation"><button type="button" aria-label="Предыдущая цель" disabled={current === 0} onClick={() => setIndex(current - 1)}>Назад</button><span>{current + 1} / {available.length}</span><button type="button" aria-label="Следующая цель" disabled={current + 1 >= available.length} onClick={() => setIndex(current + 1)}>Далее</button></div>}
-    <div className="goal-vehicle"><span className="target-symbol">◎</span><strong>{vehicleLabel(goal.vehicle)}</strong></div>
+    <div className="goal-vehicle"><span className="target-symbol">◎</span><strong>{vehicleLabel(goal.vehicle, goal.vehicle_label)}</strong></div>
     <div className="goal-values"><strong>{formatNumber(goal.avg_damage)}</strong><span>{'/ ' + formatNumber(goal.target)}</span></div>
     <span className="small muted">средний урон за серию</span>
-    <div className="progress-track" role="progressbar" aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100} aria-label="Прогресс среднего урона">
+    {!ambiguous && <div className="progress-track" role="progressbar" aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100} aria-label="Прогресс среднего урона">
       <div className={'progress-fill' + (achieved ? ' progress-done' : '')} style={{ width: percent + '%' }} />
-    </div>
+    </div>}
     <div className="goal-status"><span className={achieved ? 'positive' : 'muted'}>{goalLabels[goal.status]}</span><span>{goal.battles + '/' + goal.window}</span></div>
-    <span className="tiny muted">Урон известен в {goal.known_damage} боях. Для достижения нужен известный урон во всей серии.</span>
+    <span className="tiny muted">Урон известен в {goal.known_damage} боях. {ambiguous ? 'Старая история сохранена. Для цели выберите машину с подтверждённым идентификатором.' : 'Для достижения нужен известный урон во всей серии.'}</span>
   </section>;
 }
 
 function Comparison({ snapshot }: { snapshot: Snapshot }) {
+  if (snapshot.coach?.status === 'identity_ambiguous' || snapshot.sessions?.comparison.status === 'identity_ambiguous') {
+    return <div className="comparison-note" role="status"><span className="note-marker">i</span>
+      <span>Название связано с разной техникой. Для сравнения выберите машину с подтверждённым идентификатором. Старая история сохранена.</span></div>;
+  }
   const comparison = snapshot.comparison;
   if (!comparison.enough_previous) {
     const remaining = Math.max(0, comparison.window * 2 - snapshot.summary.battles);
@@ -215,7 +221,7 @@ export function SnapshotView({ snapshot, onSelectVehicle, onPage, section = 'all
         detail={summary.wins + ' побед · ' + summary.losses + ' пораж. · ' + summary.draws + ' ничьих'} testId="win-rate" />
       <Metric label="СРЕДНИЙ УРОН" value={formatNumber(summary.avg_damage)} detail={'Известен в ' + summary.damage_samples + ' из ' + summary.battles + ' боёв'} emphasis testId="average-damage" />
     </div>
-    {snapshot.coach && <CoachCard coach={snapshot.coach} latestVehicle={snapshot.history[0]?.vehicle} onSelectVehicle={onSelectVehicle} />}</>}
+    {snapshot.coach && <CoachCard coach={snapshot.coach} latestVehicle={snapshot.history[0]?.vehicle} latestVehicleLabel={snapshot.history[0]?.vehicle_label} onSelectVehicle={onSelectVehicle} />}</>}
     {(section === 'all' || section === 'dynamics') && <div className="analysis-row">
       <DamagePanel snapshot={snapshot} />
       <GoalCard goals={snapshot.goals} selected={snapshot.selection.vehicle} editable={!!snapshot.workspace?.can_edit} />

@@ -143,8 +143,11 @@ def build_coach(ordered_records, vehicle='', window=10):
         'remaining_battles': max(0, 2 * window - len(damage)),
         'coverage': {'current_battles': len(current), 'current_damage': len(current_known),
                      'previous_battles': len(previous), 'previous_damage': len(previous_known)},
-        'records': _records(damage, window),
     })
+    if any(row.get('_vehicle_ambiguous') for row in selected):
+        result['status'] = 'identity_ambiguous'
+        return result
+    result['records'] = _records(damage, window)
     known_modes = set(row.get('mode') for row in selected[-2 * window:]
                       if row.get('mode') not in (None, '', 'unknown'))
     if len(damage) >= 2 * window and len(known_modes) > 1:

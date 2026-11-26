@@ -1,0 +1,557 @@
+{
+  "coach": {
+    "battles": 20,
+    "comparison": {
+      "current_avg": 1200,
+      "current_median": 1200,
+      "delta": 200,
+      "delta_percent": 20,
+      "median_delta": 200,
+      "previous_avg": 1000,
+      "previous_median": 1000
+    },
+    "coverage": {
+      "current_battles": 10,
+      "current_damage": 10,
+      "previous_battles": 10,
+      "previous_damage": 10
+    },
+    "records": {
+      "best_damage": 1200,
+      "best_window_avg": 1200,
+      "current_window_avg": 1200,
+      "latest_damage": 1200,
+      "new_damage_record": false,
+      "new_window_record": true,
+      "previous_best_damage": 1200,
+      "previous_best_window_avg": 1180
+    },
+    "remaining_battles": 0,
+    "required_battles": 20,
+    "status": "ready",
+    "vehicle": "type:257",
+    "vehicle_label": "Т-34",
+    "version": 1,
+    "window": 10
+  },
+  "comparison": {
+    "current": {
+      "avg_damage": 1200.0,
+      "avg_xp": 900.0,
+      "battles": 10,
+      "damage_samples": 10,
+      "draws": 0,
+      "known_outcomes": 10,
+      "losses": 0,
+      "win_rate": 100.0,
+      "wins": 10
+    },
+    "damage_delta": 200.0,
+    "enough_current": true,
+    "enough_previous": true,
+    "previous": {
+      "avg_damage": 1000.0,
+      "avg_xp": 900.0,
+      "battles": 10,
+      "damage_samples": 10,
+      "draws": 0,
+      "known_outcomes": 10,
+      "losses": 0,
+      "win_rate": 100.0,
+      "wins": 10
+    },
+    "win_rate_delta_pp": 0.0,
+    "window": 10
+  },
+  "goals": [
+    {
+      "avg_damage": 1200.0,
+      "battles": 10,
+      "known_damage": 10,
+      "status": "achieved",
+      "target": 1100,
+      "vehicle": "type:257",
+      "vehicle_label": "Т-34",
+      "window": 10
+    }
+  ],
+  "history": [
+    {
+      "assistance_radio": 140,
+      "assistance_track": 0,
+      "credits_gross": 12000,
+      "credits_net": -1500,
+      "damage": 1200,
+      "direct_hits": 8,
+      "kills": 0,
+      "map": "arena:1",
+      "outcome": "win",
+      "penetrations": 5,
+      "shots": 10,
+      "survived": true,
+      "timestamp": 1794173220,
+      "vehicle": "type:257",
+      "vehicle_label": "Т-34",
+      "xp": 900,
+      "xp_base": 600,
+      "xp_bonus": 300
+    },
+    {
+      "assistance_radio": 140,
+      "assistance_track": 0,
+      "credits_gross": 12000,
+      "credits_net": -1500,
+      "damage": 1200,
+      "direct_hits": 8,
+      "kills": 0,
+      "map": "arena:1",
+      "outcome": "win",
+      "penetrations": 5,
+      "shots": 10,
+      "survived": true,
+      "timestamp": 1794173040,
+      "vehicle": "type:257",
+      "vehicle_label": "Т-34",
+      "xp": 900,
+      "xp_base": 600,
+      "xp_bonus": 300
+    },
+    {
+      "assistance_radio": 140,
+      "assistance_track": 0,
+      "credits_gross": 12000,
+      "credits_net": -1500,
+      "damage": 1200,
+      "direct_hits": 8,
+      "kills": 0,
+      "map": "arena:1",
+      "outcome": "win",
+      "penetrations": 5,
+      "shots": 10,
+      "survived": true,
+      "timestamp": 1794172860,
+      "vehicle": "type:257",
+      "vehicle_label": "Т-34",
+      "xp": 900,
+      "xp_base": 600,
+      "xp_bonus": 300
+    },
+    {
+      "assistance_radio": 140,
+      "assistance_track": 0,
+      "credits_gross": 12000,
+      "credits_net": -1500,
+      "damage": 1200,
+      "direct_hits": 8,
+      "kills": 0,
+      "map": "arena:1",
+      "outcome": "win",
+      "penetrations": 5,
+      "shots": 10,
+      "survived": true,
+      "timestamp": 1794172680,
+      "vehicle": "type:257",
+      "vehicle_label": "Т-34",
+      "xp": 900,
+      "xp_base": 600,
+      "xp_bonus": 300
+    },
+    {
+      "assistance_radio": 140,
+      "assistance_track": 0,
+      "credits_gross": 12000,
+      "credits_net": -1500,
+      "damage": 1200,
+      "direct_hits": 8,
+      "kills": 0,
+      "map": "arena:1",
+      "outcome": "win",
+      "penetrations": 5,
+      "shots": 10,
+      "survived": true,
+      "timestamp": 1794172500,
+      "vehicle": "type:257",
+      "vehicle_label": "Т-34",
+      "xp": 900,
+      "xp_base": 600,
+      "xp_bonus": 300
+    }
+  ],
+  "insights": {
+    "assistance_radio": {
+      "average": 140.0,
+      "samples": 20
+    },
+    "assistance_track": {
+      "average": 0.0,
+      "samples": 20
+    },
+    "days": [
+      {
+        "label": "2026-11-08",
+        "summary": {
+          "avg_damage": 1100.0,
+          "avg_xp": 900.0,
+          "battles": 20,
+          "damage_samples": 20,
+          "draws": 0,
+          "known_outcomes": 20,
+          "losses": 0,
+          "win_rate": 100.0,
+          "wins": 20
+        }
+      }
+    ],
+    "pending_count": null,
+    "recent_damage": [
+      {
+        "battle": 1,
+        "damage": 1000,
+        "outcome": "win"
+      },
+      {
+        "battle": 2,
+        "damage": 1000,
+        "outcome": "win"
+      },
+      {
+        "battle": 3,
+        "damage": 1000,
+        "outcome": "win"
+      },
+      {
+        "battle": 4,
+        "damage": 1000,
+        "outcome": "win"
+      },
+      {
+        "battle": 5,
+        "damage": 1000,
+        "outcome": "win"
+      },
+      {
+        "battle": 6,
+        "damage": 1000,
+        "outcome": "win"
+      },
+      {
+        "battle": 7,
+        "damage": 1000,
+        "outcome": "win"
+      },
+      {
+        "battle": 8,
+        "damage": 1000,
+        "outcome": "win"
+      },
+      {
+        "battle": 9,
+        "damage": 1000,
+        "outcome": "win"
+      },
+      {
+        "battle": 10,
+        "damage": 1000,
+        "outcome": "win"
+      },
+      {
+        "battle": 11,
+        "damage": 1200,
+        "outcome": "win"
+      },
+      {
+        "battle": 12,
+        "damage": 1200,
+        "outcome": "win"
+      },
+      {
+        "battle": 13,
+        "damage": 1200,
+        "outcome": "win"
+      },
+      {
+        "battle": 14,
+        "damage": 1200,
+        "outcome": "win"
+      },
+      {
+        "battle": 15,
+        "damage": 1200,
+        "outcome": "win"
+      },
+      {
+        "battle": 16,
+        "damage": 1200,
+        "outcome": "win"
+      },
+      {
+        "battle": 17,
+        "damage": 1200,
+        "outcome": "win"
+      },
+      {
+        "battle": 18,
+        "damage": 1200,
+        "outcome": "win"
+      },
+      {
+        "battle": 19,
+        "damage": 1200,
+        "outcome": "win"
+      },
+      {
+        "battle": 20,
+        "damage": 1200,
+        "outcome": "win"
+      }
+    ],
+    "streak": {
+      "length": 20,
+      "outcome": "win"
+    },
+    "tanks": [
+      {
+        "label": "type:257",
+        "summary": {
+          "avg_damage": 1100.0,
+          "avg_xp": 900.0,
+          "battles": 20,
+          "damage_samples": 20,
+          "draws": 0,
+          "known_outcomes": 20,
+          "losses": 0,
+          "win_rate": 100.0,
+          "wins": 20
+        },
+        "vehicle_label": "Т-34"
+      }
+    ],
+    "version": 1
+  },
+  "metrics": {
+    "accuracy": {
+      "hits": 160,
+      "rate": 80.0,
+      "samples": 20,
+      "shots": 200
+    },
+    "fields": {
+      "credits_gross": {
+        "average": 12000.0,
+        "samples": 20
+      },
+      "credits_net": {
+        "average": -1500.0,
+        "samples": 20
+      },
+      "kills": {
+        "average": 0.0,
+        "samples": 20
+      },
+      "xp_base": {
+        "average": 600.0,
+        "samples": 20
+      },
+      "xp_bonus": {
+        "average": 300.0,
+        "samples": 20
+      }
+    },
+    "maps": [
+      {
+        "label": "arena:1",
+        "summary": {
+          "avg_damage": 1100.0,
+          "avg_xp": 900.0,
+          "battles": 20,
+          "damage_samples": 20,
+          "draws": 0,
+          "known_outcomes": 20,
+          "losses": 0,
+          "win_rate": 100.0,
+          "wins": 20
+        }
+      }
+    ],
+    "penetration": {
+      "hits": 160,
+      "penetrations": 100,
+      "rate": 62.5,
+      "samples": 20
+    },
+    "survival": {
+      "rate": 100.0,
+      "samples": 20,
+      "survived": 20
+    },
+    "version": 1
+  },
+  "pagination": {
+    "page": 0,
+    "page_size": 5,
+    "pages": 4,
+    "total": 20
+  },
+  "protocol": 1,
+  "quality": {
+    "conflicts": 0,
+    "incomplete_records": 0,
+    "invalid_records": 0,
+    "total_records": 20
+  },
+  "request_id": "fixture",
+  "selection": {
+    "page": 0,
+    "vehicle": "type:257",
+    "window": 10
+  },
+  "series": [
+    {
+      "avg_damage": 1000.0,
+      "battle": 10,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1020.0,
+      "battle": 11,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1040.0,
+      "battle": 12,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1060.0,
+      "battle": 13,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1080.0,
+      "battle": 14,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1100.0,
+      "battle": 15,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1120.0,
+      "battle": 16,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1140.0,
+      "battle": 17,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1160.0,
+      "battle": 18,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1180.0,
+      "battle": 19,
+      "known_damage": 10
+    },
+    {
+      "avg_damage": 1200.0,
+      "battle": 20,
+      "known_damage": 10
+    }
+  ],
+  "sessions": {
+    "basis": "received_at",
+    "comparison": {
+      "current_average": 1200.0,
+      "current_battles": 10,
+      "current_median": 1200.0,
+      "delta_average": 200.0,
+      "delta_median": 200.0,
+      "minimum_battles": 10,
+      "previous_average": 1000.0,
+      "previous_battles": 10,
+      "previous_median": 1000.0,
+      "status": "ready"
+    },
+    "gap_minutes": 60,
+    "items": [
+      {
+        "ended_at": 1794173220,
+        "median_damage": 1200.0,
+        "started_at": 1794171600,
+        "summary": {
+          "avg_damage": 1200.0,
+          "avg_xp": 900.0,
+          "battles": 10,
+          "damage_samples": 10,
+          "draws": 0,
+          "known_outcomes": 10,
+          "losses": 0,
+          "win_rate": 100.0,
+          "wins": 10
+        }
+      },
+      {
+        "ended_at": 1794164220,
+        "median_damage": 1000.0,
+        "started_at": 1794162600,
+        "summary": {
+          "avg_damage": 1000.0,
+          "avg_xp": 900.0,
+          "battles": 10,
+          "damage_samples": 10,
+          "draws": 0,
+          "known_outcomes": 10,
+          "losses": 0,
+          "win_rate": 100.0,
+          "wins": 10
+        }
+      }
+    ],
+    "version": 1
+  },
+  "source": "demo",
+  "status": "ready",
+  "summary": {
+    "avg_damage": 1100.0,
+    "avg_xp": 900.0,
+    "battles": 20,
+    "damage_samples": 20,
+    "draws": 0,
+    "known_outcomes": 20,
+    "losses": 0,
+    "win_rate": 100.0,
+    "wins": 20
+  },
+  "updated_at": 1794943860,
+  "vehicles": [
+    {
+      "battles": 20,
+      "label": "Т-34",
+      "name": "type:257"
+    }
+  ],
+  "workspace": {
+    "can_edit": true,
+    "goals": [
+      {
+        "target_avg_damage": 1100,
+        "vehicle": "type:257",
+        "vehicle_label": "Т-34",
+        "window": 10
+      }
+    ],
+    "operation": null,
+    "preferences": {
+      "contrast": "standard",
+      "density": "normal",
+      "tab": "progress",
+      "vehicle": "",
+      "window": 10
+    },
+    "version": 1
+  }
+}

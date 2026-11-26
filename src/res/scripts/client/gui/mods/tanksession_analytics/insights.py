@@ -27,7 +27,7 @@ def _median(values):
 def build_metrics(records):
     """Use only observed fields; pair denominators with their numerators."""
     fields = {}
-    for name in ('kills', 'xp_base', 'credits_gross', 'credits_net'):
+    for name in ('kills', 'xp_base', 'xp_bonus', 'credits_gross', 'credits_net'):
         values = [row[name] for row in records if row.get(name) is not None]
         fields[name] = {'samples': len(values), 'average': _mean(values)}
     survivors = [row['survived'] for row in records
@@ -100,6 +100,8 @@ def build_sessions(ordered, vehicle=''):
     modes = set(row.get('mode', 'unknown') for row in current + previous)
     if len(vehicles) > 1 or 'unknown' in vehicles or (not vehicle and not vehicles):
         comparison['status'] = 'choose_vehicle'
+    elif any(row.get('_vehicle_ambiguous') for row in current + previous):
+        comparison['status'] = 'identity_ambiguous'
     elif min(len(current), len(previous)) < MIN_SESSION_BATTLES:
         pass
     elif any(row['damage'] is None for row in current + previous):

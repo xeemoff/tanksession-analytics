@@ -1,3 +1,4 @@
+import copy
 import csv
 import io
 import os
@@ -47,6 +48,60 @@ class DashboardTests(unittest.TestCase):
         self.assertIn("'=HYPERLINK", result)
         parsed = list(csv.DictReader(io.StringIO(result)))
         self.assertTrue(parsed[0]['vehicle'].startswith("'="))
+
+    def test_vehicle_options_use_canonical_values_and_separate_source_labels(self):
+        items = [dict(row(1, 'Т-34', 'A'), vehicle_id='type:257'),
+                 row(2, 'Т-34', 'A'), dict(row(3, 'Other caption', 'A'), vehicle_id='type:257'),
+                 dict(row(4, 'Private B caption', 'B'), vehicle_id='type:513')]
+        original = copy.deepcopy(items)
+        page = render(items, account_filter='A', vehicle_filter='Т-34')
+        self.assertIn('<option value="type:257" selected>Т-34</option>', page)
+        self.assertNotIn('<option value="type:513"', page)
+        self.assertIn('vehicle=type%3A257', page)
+        self.assertEqual(items, original)
+
+    def test_csv_selector_keeps_original_labels_and_scoped_identity_column(self):
+        items = [dict(row(1, 'First caption', 'A'), vehicle_id='type:257'),
+                 row(2, 'First caption', 'A'), dict(row(3, 'Second caption', 'A'), vehicle_id='type:257'),
+                 row(4, 'First caption', 'B')]
+        original = copy.deepcopy(items)
+        for key in ('type:257', 'First caption'):
+            data = export_csv(items, vehicle_filter=key, account_filter='A').decode('utf-8-sig')
+            parsed = list(csv.DictReader(io.StringIO(data)))
+            self.assertEqual([item['vehicle'] for item in parsed],
+                             ['First caption', 'First caption', 'Second caption'])
+            self.assertEqual([item['vehicle_id'] for item in parsed], ['type:257'] * 3)
+        self.assertEqual(items, original)
+
+    def test_legacy_readonly_labels_are_retained_and_never_promoted_from_another_account(self):
+        items = [dict(row(1, 'Shared', 'A'), vehicle_id='type:257'), row(2, 'Shared', 'local')]
+        page = render(items, vehicle_filter='Shared', account_filter='local')
+        self.assertIn('<option value="Shared" selected>Shared</option>', page)
+        self.assertNotIn('<option value="type:257"', page)
+        data = export_csv(items, vehicle_filter='Shared', account_filter='local').decode('utf-8-sig')
+        parsed = list(csv.DictReader(io.StringIO(data)))
+        self.assertEqual(len(parsed), 1)
+        self.assertEqual(parsed[0]['vehicle_id'], '')
+
+    def test_ambiguous_legacy_selection_keeps_history_without_period_comparison(self):
+        items = ([row(i, 'Shared', 'A') for i in range(1, 21)]
+                 + [dict(row(i, 'Shared', 'A'), vehicle_id='type:257') for i in range(21, 41)]
+                 + [dict(row(41, 'Shared', 'A'), vehicle_id='type:513')])
+        original = copy.deepcopy(items)
+        page = render(items, vehicle_filter='Shared', account_filter='A')
+        self.assertIn('<option value="Shared" selected>Shared · старая запись</option>', page)
+        self.assertIn('<option value="type:257">Shared · #257</option>', page)
+        self.assertIn('<option value="type:513">Shared · #513</option>', page)
+        self.assertIn('Название связано с разной техникой', page)
+        self.assertIn('Старая история сохранена', page)
+        self.assertNotIn('class="stats compare"', page)
+        self.assertNotIn('изменение:', page)
+        data = export_csv(items, vehicle_filter='Shared', account_filter='A').decode('utf-8-sig')
+        self.assertEqual(len(list(csv.DictReader(io.StringIO(data)))), 20)
+        confirmed = render(items, vehicle_filter='type:257', account_filter='A')
+        self.assertIn('class="stats compare"', confirmed)
+        self.assertNotIn('Название связано с разной техникой', confirmed)
+        self.assertEqual(items, original)
 
 
 if __name__ == '__main__':

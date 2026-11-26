@@ -36,8 +36,8 @@ jobs:
         run: python tools/simulate_capture.py
       - name: Check UI snapshots against the Python contract
         run: python tools/generate_ui_fixtures.py --check
-      - name: Performance smoke test (10k synthetic battles)
-        run: python tools/benchmark.py --battles 10000
+      - name: Performance smoke test (10k synthetic battles and 30 legacy goals)
+        run: python tools/benchmark.py --battles 10000 --goals 30
 
   hangar-ui:
     name: React / TypeScript / browser preview
@@ -142,6 +142,9 @@ jobs:
           "$PYTHON2" -m unittest discover -s tests -p test_coach.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_workspace.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_insights.py -v
+          "$PYTHON2" -m unittest discover -s tests -p test_economy.py -v
+          "$PYTHON2" -m unittest discover -s tests -p test_vehicle_identity.py -v
+          "$PYTHON2" -m unittest discover -s tests -p test_identity_integration.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_optional_metrics.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_recovery_limits.py -v
       - name: Build candidate and inspect structure

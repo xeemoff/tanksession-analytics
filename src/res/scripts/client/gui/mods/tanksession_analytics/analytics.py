@@ -10,6 +10,7 @@ from datetime import datetime
 from collections import deque
 
 from .core import _as_text, _non_negative_int, summarize
+from .vehicles import resolve_records, resolve_selector, selector_for
 
 WINDOWS = (10, 30, 100)
 
@@ -69,36 +70,61 @@ def sort_records(records):
     return [item[2] for item in valid]
 
 
+def _vehicle_groups(records, account=''):
+    """Resolve raw journal rows in separate accounts, never a mixed alias index.
+
+    The read-only dashboard retains unowned legacy imports as exact buckets.
+    They cannot establish identity links, including internal-name inference.
+    """
+    groups = {}
+    for item in records:
+        if not isinstance(item, dict):
+            continue
+        owner = _as_text(item.get('account_id') or 'local')
+        if account and owner != account:
+            continue
+        groups.setdefault(owner, []).append(item)
+    for owner in sorted(groups):
+        rows = groups[owner]
+        resolved = resolve_records(rows, owner)
+        yield (resolved if resolved else [dict(row) for row in rows]), bool(resolved)
+
+
 def select_records(records, vehicle='', account='', from_day='', to_day=''):
     """Filter own local battle journal using strict date bounds (inclusive).
 
     Records without a valid timestamp are ignored rather than assigned a day.
-    Callers can list accounts/vehicles first to populate exact-match options.
+    Vehicle filters accept canonical selectors and old exact aliases resolved
+    within each account. The returned copies preserve the original label in
+    ``vehicle``; only ``vehicle_id`` can be enriched by that account's evidence.
+    No source journal row is modified.
     """
     from_day, to_day = valid_date(from_day), valid_date(to_day)
     selected = []
-    for item in sort_records(records):
-        if vehicle and _as_text(item.get('vehicle') or 'unknown') != vehicle:
-            continue
-        if account and _as_text(item.get('account_id') or 'local') != account:
-            continue
-        day = record_date(item)
-        if from_day and day < from_day:
-            continue
-        if to_day and day > to_day:
-            continue
-        selected.append(item)
-    return selected
+    for rows, verified in _vehicle_groups(sort_records(records), account):
+        selector = resolve_selector(vehicle, rows) if vehicle and verified else vehicle
+        for item in rows:
+            if vehicle and selector_for(item) != selector:
+                continue
+            day = record_date(item)
+            if from_day and day < from_day:
+                continue
+            if to_day and day > to_day:
+                continue
+            selected.append(item)
+    return sort_records(selected)
 
 
 def vehicle_table(records):
-    """Compute per-tank ranking, with ties broken by the tank's label."""
+    """Rank raw journal rows by selector, preserving account-scoped aliases.
+
+    The same confirmed type may share a bucket in an all-account report; a
+    label observed in another account never supplies missing identity evidence.
+    """
     buckets = {}
-    for item in records:
-        if not isinstance(item, dict):
-            continue
-        name = _as_text(item.get('vehicle') or 'unknown')
-        buckets.setdefault(name, []).append(item)
+    for rows, unused in _vehicle_groups(records):
+        for item in rows:
+            buckets.setdefault(selector_for(item), []).append(item)
     entries = [(name, summarize(rows)) for name, rows in buckets.items()]
     return sorted(entries, key=lambda entry: (-entry[1]['battles'], entry[0]))
 

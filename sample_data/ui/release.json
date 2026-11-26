@@ -90,7 +90,8 @@
       "timestamp": 1794173220,
       "vehicle": "IS-7",
       "xp": 500,
-      "xp_base": null
+      "xp_base": null,
+      "xp_bonus": null
     },
     {
       "assistance_radio": 140,
@@ -108,7 +109,8 @@
       "timestamp": 1794173040,
       "vehicle": "IS-7",
       "xp": 500,
-      "xp_base": null
+      "xp_base": null,
+      "xp_bonus": null
     },
     {
       "assistance_radio": 140,
@@ -126,7 +128,8 @@
       "timestamp": 1794172860,
       "vehicle": "IS-7",
       "xp": 500,
-      "xp_base": null
+      "xp_base": null,
+      "xp_bonus": null
     },
     {
       "assistance_radio": 140,
@@ -144,7 +147,8 @@
       "timestamp": 1794172680,
       "vehicle": "IS-7",
       "xp": 500,
-      "xp_base": null
+      "xp_base": null,
+      "xp_bonus": null
     },
     {
       "assistance_radio": 140,
@@ -162,7 +166,8 @@
       "timestamp": 1794172500,
       "vehicle": "IS-7",
       "xp": 500,
-      "xp_base": null
+      "xp_base": null,
+      "xp_bonus": null
     }
   ],
   "insights": {
@@ -336,6 +341,10 @@
         "samples": 20
       },
       "xp_base": {
+        "average": null,
+        "samples": 0
+      },
+      "xp_bonus": {
         "average": null,
         "samples": 0
       }

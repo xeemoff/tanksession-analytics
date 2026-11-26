@@ -58,8 +58,32 @@ def fixtures():
         session_rows, 'demo', {'protocol': 1, 'request_id': 'fixture',
                                'vehicle': 'IS-7', 'window': 10, 'page': 0},
         legacy_goals=goals, source='demo', now=observed)
+    identity_rows = coach_rows([1000] * 10 + [1200] * 10)
+    for index, row in enumerate(identity_rows):
+        row['vehicle'] = 'ussr:R04_T-34' if index % 2 == 0 else u'Т-34'
+        row['vehicle_id'] = None if index == 0 else 'type:257'
+        row.update(xp=900, xp_base=600, xp_bonus=300, credits_net=-1500)
+        if index >= 10:
+            row['timestamp'] += 7200
+    identity_goals = [{'vehicle': 'ussr:R04_T-34', 'window': 10,
+                       'target_avg_damage': 1100}]
+    identity_ready = Workspace(str(ROOT / 'sample_data'), memory=True).snapshot(
+        identity_rows, 'demo', {'protocol': 1, 'request_id': 'fixture',
+                                'vehicle': 'ussr:R04_T-34', 'window': 10, 'page': 0},
+        legacy_goals=identity_goals, source='demo', now=observed)
+    ambiguous_rows = [dict(row, vehicle='T-34', vehicle_id=None) for row in identity_rows]
+    ambiguous_rows += [dict(identity_rows[-1], arena_id='known-type-%d' % index,
+                           vehicle='T-34', vehicle_id=identity)
+                       for index, identity in enumerate(('type:257', 'type:513'))]
+    identity_ambiguous = Workspace(str(ROOT / 'sample_data'), memory=True).snapshot(
+        ambiguous_rows, 'demo', {'protocol': 1, 'request_id': 'fixture',
+                                 'vehicle': 'T-34', 'window': 10, 'page': 0},
+        legacy_goals=[dict(identity_goals[0], vehicle='T-34')],
+        source='demo', now=observed)
     return {
         'release.json': release,
+        'identity_ready.json': identity_ready,
+        'identity_ambiguous.json': identity_ambiguous,
         'demo.json': snapshot(rows),
         'demo_filters.json': variants,
         'empty.json': snapshot([]),

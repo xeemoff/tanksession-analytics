@@ -7,7 +7,7 @@ function BattleDetails({ battle, onBack }: { battle: HistoryBattle; onBack: () =
   const [tab, setTab] = useState<'battle' | 'economy'>('battle');
   const item = (label: string, value: string, detail?: string) => <div className="detail-metric" key={label}><span>{label}</span><strong>{value}</strong>{detail && <small>{detail}</small>}</div>;
   return <section className="battle-detail" aria-label="Подробности боя">
-    <div className="section-heading"><h2>{vehicleLabel(battle.vehicle) + ' · ' + timeLabel(battle.timestamp)}</h2><button type="button" onClick={onBack}>К списку боёв</button></div>
+    <div className="section-heading"><h2>{vehicleLabel(battle.vehicle, battle.vehicle_label) + ' · ' + timeLabel(battle.timestamp)}</h2><button type="button" onClick={onBack}>К списку боёв</button></div>
     <div className="insight-switch" role="group" aria-label="Показатели боя">
       <button type="button" aria-pressed={tab === 'battle'} className={tab === 'battle' ? 'active' : ''} onClick={() => setTab('battle')}>Бой и стрельба</button>
       <button type="button" aria-pressed={tab === 'economy'} className={tab === 'economy' ? 'active' : ''} onClick={() => setTab('economy')}>Опыт и экономика</button>
@@ -24,9 +24,10 @@ function BattleDetails({ battle, onBack }: { battle: HistoryBattle; onBack: () =
         {item('Помощь по гусенице', formatNumber(battle.assistance_track ?? null))}
       </> : <>
         {item('Опыт из результата', formatNumber(battle.xp), 'Может включать бонусы')}
-        {item('Базовый опыт', formatNumber(battle.xp_base ?? null), 'Только при отдельном значении в результате')}
+        {item('Базовый опыт', formatNumber(battle.xp_base ?? null), 'Если базовый опыт известен')}
+        {item('Бонусный опыт', formatNumber(battle.xp_bonus ?? null), 'Сверх базового опыта после корректировок')}
         {item('Начислено кредитов', formatNumber(battle.credits_gross ?? null))}
-        {item('Итог кредитов', formatNumber(battle.credits_net ?? null), 'Если клиент передал итог после расходов')}
+        {item('Итог кредитов', formatNumber(battle.credits_net ?? null), 'Фактические списания в кредитах. Запасы со склада не оцениваются.')}
       </>}
     </div>
     <p className="trend-note">Время — получение результата. Тире означает, что поле не получено. Старые записи сохраняются без вымышленных значений.</p>
@@ -46,11 +47,11 @@ export function BattleHistory({ snapshot, onPage, busy = false }: { snapshot: Sn
   return <section className="history-section">
     <div className="section-heading"><h2>{pagination ? 'История боёв' : 'Последние бои'}</h2><span className="small muted">{pagination ? pagination.total + ' записей · выбранная техника' : 'До 12 последних результатов'}</span></div>
     <div role="table" aria-label="Последние бои" className="history-table">
-      <div role="row" className="history-row history-head"><span role="columnheader" className="col-time">Получен результат</span><span role="columnheader" className="col-vehicle">Техника</span><span role="columnheader" className="col-result">Исход</span><span role="columnheader" className="col-damage">Урон</span><span role="columnheader" className="col-xp" title="Опыт из результата может включать бонусы. Базовый опыт, если известен, доступен в подробностях.">Полученный опыт</span><span role="columnheader" className="col-details">Подробнее</span></div>
+      <div role="row" className="history-row history-head"><span role="columnheader" className="col-time">Получен результат</span><span role="columnheader" className="col-vehicle">Техника</span><span role="columnheader" className="col-result">Исход</span><span role="columnheader" className="col-damage">Урон</span><span role="columnheader" className="col-xp" title="Опыт из результата может включать бонусы. Известные базовый и бонусный опыт доступны в подробностях.">Полученный опыт</span><span role="columnheader" className="col-details">Подробнее</span></div>
       <div className="history-scroll">
         {rows.map((battle, index) => <div role="row" className="history-row" key={battle.timestamp + ':' + index}>
           <span role="cell" className="col-time muted">{timeLabel(battle.timestamp)}</span>
-          <span role="cell" className="col-vehicle" title={battle.vehicle}>{vehicleLabel(battle.vehicle)}</span>
+          <span role="cell" className="col-vehicle" title={vehicleLabel(battle.vehicle, battle.vehicle_label)}>{vehicleLabel(battle.vehicle, battle.vehicle_label)}</span>
           <span role="cell" className={'col-result result-' + (battle.outcome || 'unknown')}><span className="result-dot" />{outcomeLabel[battle.outcome || 'unknown'] || 'Неизвестно'}</span>
           <span role="cell" className="col-damage numeric">{formatNumber(battle.damage)}</span>
           <span role="cell" className="col-xp numeric muted">{formatNumber(battle.xp)}</span>

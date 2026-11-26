@@ -33,21 +33,26 @@ function Records({ coach }: { coach: Coach }) {
   </div>;
 }
 
-export function CoachCard({ coach, latestVehicle, onSelectVehicle }: {
-  coach: Coach; latestVehicle?: string; onSelectVehicle?: (vehicle: string) => void;
+export function CoachCard({ coach, latestVehicle, latestVehicleLabel, onSelectVehicle }: {
+  coach: Coach; latestVehicle?: string; latestVehicleLabel?: string; onSelectVehicle?: (vehicle: string) => void;
 }) {
   const [explain, setExplain] = useState(false);
   const comparison = coach.comparison;
   const choose = coach.status === 'choose_vehicle';
+  const ambiguous = coach.status === 'identity_ambiguous';
   const positive = comparison !== null && comparison.delta > 0;
   const negative = comparison !== null && comparison.delta < 0;
   return <section className={'coach-card coach-' + coach.status} aria-label="Разбор прогресса" data-testid="coach-card">
-    <div className="section-heading"><h2>Разбор прогресса</h2><span className="subtle-tag">{choose ? 'ОДНА МАШИНА' : coach.window + ' + ' + coach.window + ' БОЁВ'}</span></div>
+    <div className="section-heading"><h2>Разбор прогресса</h2><span className="subtle-tag">{choose ? 'ОДНА МАШИНА' : ambiguous ? 'ТЕХНИКА НЕ УТОЧНЕНА' : coach.window + ' + ' + coach.window + ' БОЁВ'}</span></div>
     {choose ? <div className="coach-choose">
       <div><strong>Выберите машину для личного сравнения</strong><p>Результаты разной или неизвестной техники не смешиваются. Выберите определённый танк в списке выше.</p></div>
-      {latestVehicle && latestVehicle !== 'unknown' && onSelectVehicle && <button type="button" className="coach-select-button" onClick={() => onSelectVehicle(latestVehicle)} aria-label="Разобрать последнюю машину">{'Разобрать ' + vehicleLabel(latestVehicle)}</button>}
-    </div> : <>
-      {!explain && <><div className="coach-scope"><strong>{coach.vehicle ? vehicleLabel(coach.vehicle) : 'Машина ещё не выбрана'}</strong><span>{coach.battles + ' сохранённых боёв'}</span></div>
+      {latestVehicle && latestVehicle !== 'unknown' && onSelectVehicle && <button type="button" className="coach-select-button" onClick={() => onSelectVehicle(latestVehicle)} aria-label="Разобрать последнюю машину">{'Разобрать ' + vehicleLabel(latestVehicle, latestVehicleLabel)}</button>}
+    </div> : ambiguous ? <>
+      <div className="coach-scope"><strong>{vehicleLabel(coach.vehicle, coach.vehicle_label)}</strong><span>{coach.battles + ' сохранённых боёв'}</span></div>
+      <div className="coach-wait" role="status"><strong>Название связано с разной техникой.</strong>
+        <p>Для сравнения выберите машину с подтверждённым идентификатором. Старая история сохранена.</p></div>
+    </> : <>
+      {!explain && <><div className="coach-scope"><strong>{coach.vehicle ? vehicleLabel(coach.vehicle, coach.vehicle_label) : 'Машина ещё не выбрана'}</strong><span>{coach.battles + ' сохранённых боёв'}</span></div>
       {comparison ? <>
         <div className="coach-verdict">
           <strong className={positive ? 'positive' : negative ? 'negative' : ''}>{positive ? 'Средний урон в этой выборке выше' : negative ? 'Средний урон в этой выборке ниже' : 'Средний урон почти не изменился'}</strong>

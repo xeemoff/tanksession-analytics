@@ -6,6 +6,7 @@ marked as achieved until a complete window and enough known damage exists.
 """
 from __future__ import division
 from .core import _as_text, _non_negative_int, summarize
+from .vehicles import resolve_records, selector_resolver, selector_for
 
 try:
     _text_types = (str, unicode)
@@ -44,6 +45,33 @@ def validate_goals(raw):
     return clean
 
 
+def migrate_goal_selectors(goals, records, resolve=None):
+    """Resolve exact legacy names without discarding conflicting old targets.
+
+    This is a read projection. The caller persists it only after an explicit
+    profile edit; the original goals.json and journal are never rewritten.
+    """
+    candidates = []
+    targets = {}
+    resolve = selector_resolver(records) if resolve is None else resolve
+    for goal in validate_goals(goals):
+        selector = resolve(goal['vehicle'])
+        key = (goal.get('account_id'), selector, goal['window'])
+        targets.setdefault(key, set()).add(goal['target_avg_damage'])
+        candidates.append((goal, selector, key))
+    migrated, seen = [], set()
+    for goal, selector, key in candidates:
+        item = dict(goal)
+        if len(targets[key]) == 1:
+            item['vehicle'] = selector
+        signature = (item.get('account_id'), item['vehicle'], item['window'],
+                     item['target_avg_damage'])
+        if signature not in seen:
+            migrated.append(item)
+            seen.add(signature)
+    return migrated
+
+
 def evaluate_goals(records, goals, account_id=None):
     """Evaluate each account separately, even in the all-accounts view.
 
@@ -54,6 +82,9 @@ def evaluate_goals(records, goals, account_id=None):
     ordered = sort_records(records)
     selected_account = _as_text(account_id).strip() if account_id else None
     accounts = sorted(set(_as_text(row.get('account_id') or 'local') for row in ordered))
+    scopes = {}
+    resolvers = {}
+    buckets = {}
     results = []
     for goal in validate_goals(goals):
         bound = goal.get('account_id')
@@ -66,9 +97,20 @@ def evaluate_goals(records, goals, account_id=None):
         else:
             target_accounts = accounts or [None]
         for account in target_accounts:
-            own = [row for row in ordered
-                   if _as_text(row.get('account_id') or 'local') == account
-                   and row.get('vehicle') == goal['vehicle']]
+            if account not in scopes:
+                account_rows = [
+                    row for row in ordered
+                    if _as_text(row.get('account_id') or 'local') == account]
+                # The old read-only dashboard can display unowned imports.
+                # Preserve their exact buckets without learning alias links.
+                scopes[account] = (account_rows if account in (None, 'local', 'unknown')
+                                   else resolve_records(account_rows, account))
+                resolvers[account] = selector_resolver(scopes[account])
+                buckets[account] = {}
+                for row in scopes[account]:
+                    buckets[account].setdefault(selector_for(row), []).append(row)
+            selector = resolvers[account](goal['vehicle'])
+            own = buckets[account].get(selector, [])
             sample = own[-goal['window']:]
             stats = summarize(sample)
             complete = len(sample) == goal['window']
@@ -77,6 +119,8 @@ def evaluate_goals(records, goals, account_id=None):
             minimum = goal['window']
             if account is None:
                 status = 'no_data'
+            elif any(row.get('_vehicle_ambiguous') for row in sample):
+                status = 'identity_ambiguous'
             elif not complete:
                 status = 'in_progress'
             elif stats['damage_samples'] < minimum:

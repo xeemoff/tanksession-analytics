@@ -25,14 +25,15 @@ with open(path, 'w', encoding='utf-8') as target:
             'assistance_track': (index * 13) % 300,
             'xp': 400 + (index * 23) % 570,
             'xp_base': None if index % 7 == 0 else 300 + (index * 23) % 570,
+            'xp_bonus': None if index % 7 == 0 else 100,
             'kills': index % 4,
             'survived': index % 3 == 0,
             'shots': 10 + index % 9,
             'direct_hits': 8 + index % 9,
             'penetrations': 5 + index % 9,
             'credits_gross': 12000 + (index * 977) % 25000,
-            # Synthetic imported net values; the game collector does not
-            # infer this field from an incomplete expense breakdown.
+            # Synthetic net values, not evidence of installed-client output.
+            # Real collection requires the complete verified credit chain.
             'credits_net': -3000 + (index * 701) % 15000,
             'map': 'arena:%d' % (1 + index % 3),
         }

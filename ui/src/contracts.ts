@@ -3,7 +3,7 @@ export type Mode = 'gameface' | 'demo' | 'local';
 export type PanelSection = 'progress' | 'dynamics' | 'history' | 'summary' | 'settings';
 export interface Selection { vehicle: string; window: WindowSize; page?: number }
 export interface Preferences { vehicle: string; window: WindowSize; tab: PanelSection; density: 'normal' | 'compact'; contrast: 'standard' | 'high' }
-export interface GoalDefinition { vehicle: string; window: number; target_avg_damage: number }
+export interface GoalDefinition { vehicle: string; vehicle_label?: string; window: number; target_avg_damage: number }
 export type UserCommand = { action: 'initialize' | 'export_csv' }
   | { action: 'save_preferences'; preferences: Preferences }
   | { action: 'save_goal'; goal: GoalDefinition }
@@ -14,14 +14,14 @@ export interface Summary {
   win_rate: number | null; avg_damage: number | null; avg_xp: number | null; damage_samples: number;
 }
 export interface Goal {
-  vehicle: string; target: number; window: number; battles: number; known_damage: number;
+  vehicle: string; vehicle_label?: string; target: number; window: number; battles: number; known_damage: number;
   avg_damage: number | null;
-  status: 'no_data' | 'in_progress' | 'insufficient_data' | 'achieved' | 'not_achieved';
+  status: 'no_data' | 'in_progress' | 'insufficient_data' | 'identity_ambiguous' | 'achieved' | 'not_achieved';
 }
 export interface Coach {
   version: 1;
-  status: 'choose_vehicle' | 'empty' | 'collecting' | 'incomplete' | 'mixed_modes' | 'ready';
-  vehicle: string; window: WindowSize; battles: number; required_battles: number; remaining_battles: number;
+  status: 'choose_vehicle' | 'empty' | 'collecting' | 'incomplete' | 'mixed_modes' | 'identity_ambiguous' | 'ready';
+  vehicle: string; vehicle_label?: string; window: WindowSize; battles: number; required_battles: number; remaining_battles: number;
   coverage: { current_battles: number; current_damage: number; previous_battles: number; previous_damage: number };
   comparison: null | {
     current_avg: number; previous_avg: number; delta: number; delta_percent: number | null;
@@ -36,7 +36,7 @@ export interface Coach {
 }
 export type ObservedOutcome = 'win' | 'loss' | 'draw' | 'unknown';
 export interface BattlePoint { battle: number; damage: number | null; outcome: ObservedOutcome }
-export interface InsightGroup { label: string; summary: Summary }
+export interface InsightGroup { label: string; vehicle_label?: string; summary: Summary }
 export interface AssistanceMetric { samples: number; average: number | null }
 export interface Insights {
   version: 1;
@@ -49,10 +49,10 @@ export interface Insights {
   assistance_track: AssistanceMetric;
 }
 export interface HistoryBattle {
-  timestamp: number; vehicle: string; outcome: string | null; damage: number | null; xp: number | null;
+  timestamp: number; vehicle: string; vehicle_label?: string; outcome: string | null; damage: number | null; xp: number | null;
   map?: string | null; kills?: number | null; survived?: boolean | null;
   shots?: number | null; direct_hits?: number | null; penetrations?: number | null;
-  xp_base?: number | null; credits_gross?: number | null; credits_net?: number | null;
+  xp_base?: number | null; xp_bonus?: number | null; credits_gross?: number | null; credits_net?: number | null;
   assistance_radio?: number | null; assistance_track?: number | null;
 }
 export interface Workspace {
@@ -61,7 +61,8 @@ export interface Workspace {
 }
 export interface ExtendedMetrics {
   version: 1;
-  fields: Record<'kills' | 'xp_base' | 'credits_gross' | 'credits_net', AssistanceMetric>;
+  fields: Record<'kills' | 'xp_base' | 'credits_gross' | 'credits_net', AssistanceMetric>
+    & { xp_bonus?: AssistanceMetric };
   survival: { samples: number; survived: number; rate: number | null };
   accuracy: { samples: number; shots: number; hits: number; rate: number | null };
   penetration: { samples: number; hits: number; penetrations: number; rate: number | null };
@@ -71,7 +72,7 @@ export interface Sessions {
   version: 1; gap_minutes: 60; basis: 'received_at';
   items: Array<{ started_at: number; ended_at: number; summary: Summary; median_damage: number | null }>;
   comparison: {
-    status: 'choose_vehicle' | 'insufficient_data' | 'incomplete' | 'mixed_modes' | 'mode_unknown' | 'ready';
+    status: 'choose_vehicle' | 'insufficient_data' | 'incomplete' | 'mixed_modes' | 'mode_unknown' | 'identity_ambiguous' | 'ready';
     minimum_battles: number; current_battles: number; previous_battles: number;
     current_average: number | null; previous_average: number | null;
     current_median: number | null; previous_median: number | null;
@@ -81,7 +82,7 @@ export interface Sessions {
 export interface Snapshot {
   protocol: 1; source: 'game' | 'demo'; status: 'ready' | 'empty' | 'account_unavailable';
   request_id: string; selection: Selection;
-  vehicles: Array<{ name: string; battles: number }>;
+  vehicles: Array<{ name: string; label?: string; battles: number }>;
   summary: Summary;
   comparison: {
     window: WindowSize; current: Summary; previous: Summary | null;
@@ -124,8 +125,8 @@ function selection(value: unknown): value is Selection {
 }
 
 function coach(value: unknown, window: WindowSize): value is Coach {
-  if (!record(value) || value.version !== 1 || !['choose_vehicle', 'empty', 'collecting', 'incomplete', 'mixed_modes', 'ready'].includes(value.status as string)
-      || !text(value.vehicle) || value.window !== window || !count(value.battles)
+  if (!record(value) || value.version !== 1 || !['choose_vehicle', 'empty', 'collecting', 'incomplete', 'mixed_modes', 'identity_ambiguous', 'ready'].includes(value.status as string)
+      || !text(value.vehicle) || ('vehicle_label' in value && !text(value.vehicle_label)) || value.window !== window || !count(value.battles)
       || value.required_battles !== window * 2 || !count(value.remaining_battles)
       || value.remaining_battles !== Math.max(0, window * 2 - value.battles)) return false;
   const coverage = value.coverage;
@@ -151,6 +152,11 @@ function coach(value: unknown, window: WindowSize): value is Coach {
       || !['best_window_avg', 'previous_best_window_avg', 'current_window_avg'].every(key => metric(records[key]))
       || typeof records.new_damage_record !== 'boolean' || typeof records.new_window_record !== 'boolean') return false;
   const r = records as unknown as Coach['records'];
+  if (value.status === 'identity_ambiguous') {
+    return !!value.vehicle && value.battles > 0 && !r.new_damage_record && !r.new_window_record
+      && ['best_damage', 'latest_damage', 'previous_best_damage', 'best_window_avg', 'previous_best_window_avg', 'current_window_avg']
+        .every(key => records[key] === null);
+  }
   const maximum = (a: number | null, b: number | null) => a === null ? b : b === null ? a : Math.max(a, b);
   if (r.best_damage !== maximum(r.latest_damage, r.previous_best_damage)
       || r.best_window_avg !== maximum(r.current_window_avg, r.previous_best_window_avg)) return false;
@@ -219,6 +225,7 @@ function validInsights(value: unknown, totals: Summary, status: Snapshot['status
     let total = 0;
     for (const item of items) {
       if (!record(item) || !text(item.label, days ? 10 : 128) || !item.label
+          || ('vehicle_label' in item && !text(item.vehicle_label))
           || (days && !/^\d{4}-\d{2}-\d{2}$/.test(item.label))
           || (!days && !!selected.vehicle && item.label !== selected.vehicle)
           || labels.has(item.label) || !summary(item.summary) || item.summary.battles === 0
@@ -243,6 +250,7 @@ function validWorkspace(value: unknown): value is Workspace {
   if (!selection(p) || !['progress', 'dynamics', 'history', 'summary', 'settings'].includes(p.tab as string)
       || !['normal', 'compact'].includes(p.density as string) || !['standard', 'high'].includes(p.contrast as string)) return false;
   if (!array(value.goals, 30) || !value.goals.every(g => record(g) && text(g.vehicle) && !!g.vehicle
+      && (!('vehicle_label' in g) || text(g.vehicle_label))
       && count(g.window) && g.window >= 10 && g.window <= 1000 && count(g.target_avg_damage)
       && g.target_avg_damage > 0 && g.target_avg_damage <= 50000)) return false;
   const op = value.operation;
@@ -254,7 +262,9 @@ function validWorkspace(value: unknown): value is Workspace {
 function validMetrics(value: unknown, total: number): value is ExtendedMetrics {
   if (!record(value) || value.version !== 1 || !record(value.fields)) return false;
   const fields = value.fields;
-  for (const key of ['kills', 'xp_base', 'credits_gross', 'credits_net']) {
+  for (const key of ['kills', 'xp_base', 'xp_bonus', 'credits_gross', 'credits_net']) {
+    // Additive protocol-1 field: older sources do not provide bonus XP.
+    if (key === 'xp_bonus' && !(key in fields)) continue;
     const field = fields[key];
     if (!record(field) || !count(field.samples) || field.samples > total
         || !(key === 'credits_net' ? nullableNumber(field.average) : metric(field.average))
@@ -288,11 +298,12 @@ function validSessions(value: unknown, total: number): value is Sessions {
     sum += item.summary.battles;
   }
   const c = value.comparison;
-  if (sum > total || !record(c) || !['choose_vehicle', 'insufficient_data', 'incomplete', 'mixed_modes', 'mode_unknown', 'ready'].includes(c.status as string)
+  if (sum > total || !record(c) || !['choose_vehicle', 'insufficient_data', 'incomplete', 'mixed_modes', 'mode_unknown', 'identity_ambiguous', 'ready'].includes(c.status as string)
       || !count(c.minimum_battles) || c.minimum_battles < 10 || !count(c.current_battles) || !count(c.previous_battles)
       || c.current_battles + c.previous_battles > total) return false;
   const averages = ['current_average', 'previous_average', 'current_median', 'previous_median'];
   if (!averages.every(key => metric(c[key])) || !nullableNumber(c.delta_average) || !nullableNumber(c.delta_median)) return false;
+  if (c.status === 'identity_ambiguous') return [...averages, 'delta_average', 'delta_median'].every(key => c[key] === null);
   return c.status !== 'ready' || (c.current_battles >= c.minimum_battles && c.previous_battles >= c.minimum_battles
     && [...averages, 'delta_average', 'delta_median'].every(key => number(c[key])));
 }
@@ -313,7 +324,8 @@ export function parseSnapshot(raw: unknown): Snapshot {
       || !['ready', 'empty', 'account_unavailable'].includes(raw.status as string)
       || !text(raw.request_id, 64) || !selection(raw.selection) || !summary(raw.summary)
       || !count(raw.updated_at) || raw.updated_at > 253402300799) return fail();
-  if (!array(raw.vehicles, 2048) || !raw.vehicles.every(v => record(v) && text(v.name) && count(v.battles))) return fail();
+  if (!array(raw.vehicles, 2048) || !raw.vehicles.every(v => record(v) && text(v.name)
+      && (!('label' in v) || text(v.label)) && count(v.battles))) return fail();
   const comparison = raw.comparison;
   if (!record(comparison) || ![10, 30, 100].includes(comparison.window as number)
       || !summary(comparison.current) || !(comparison.previous === null || summary(comparison.previous))
@@ -321,11 +333,13 @@ export function parseSnapshot(raw: unknown): Snapshot {
       || !nullableNumber(comparison.damage_delta) || !nullableNumber(comparison.win_rate_delta_pp)) return fail();
   if (!array(raw.series, 60) || !raw.series.every(v => record(v) && count(v.battle) && metric(v.avg_damage) && count(v.known_damage))) return fail();
   if (!array(raw.goals, 30) || !raw.goals.every(v => record(v) && text(v.vehicle)
+      && (!('vehicle_label' in v) || text(v.vehicle_label))
       && count(v.target) && count(v.window) && count(v.battles) && count(v.known_damage)
-      && metric(v.avg_damage) && ['no_data', 'in_progress', 'insufficient_data', 'achieved', 'not_achieved'].includes(v.status as string))) return fail();
+      && metric(v.avg_damage) && ['no_data', 'in_progress', 'insufficient_data', 'identity_ambiguous', 'achieved', 'not_achieved'].includes(v.status as string))) return fail();
   if (!array(raw.history, 12) || !raw.history.every(v => record(v) && count(v.timestamp) && v.timestamp <= 253402300799 && text(v.vehicle)
+      && (!('vehicle_label' in v) || text(v.vehicle_label))
       && [null, 'unknown', 'win', 'loss', 'draw'].includes(v.outcome as string | null) && metric(v.damage) && metric(v.xp)
-      && ['kills', 'shots', 'direct_hits', 'penetrations', 'xp_base', 'credits_gross', 'assistance_radio', 'assistance_track'].every(key => !(key in v) || v[key] === null || count(v[key]))
+      && ['kills', 'shots', 'direct_hits', 'penetrations', 'xp_base', 'xp_bonus', 'credits_gross', 'assistance_radio', 'assistance_track'].every(key => !(key in v) || v[key] === null || count(v[key]))
       && (!('credits_net' in v) || v.credits_net === null || (number(v.credits_net) && Number.isSafeInteger(v.credits_net)))
       && (!('survived' in v) || v.survived === null || typeof v.survived === 'boolean')
       && (!('map' in v) || v.map === null || text(v.map)))) return fail();

@@ -84,9 +84,12 @@ class BuildTests(unittest.TestCase):
             verify_mtmod(self.archive)
 
     def test_reject_missing_dependency_even_with_many_other_modules(self):
-        self.make_archive(omit='res/scripts/client/gui/mods/tanksession_analytics/core.pyc')
-        with self.assertRaisesRegex(ValueError, 'Missing required modules'):
-            verify_mtmod(self.archive)
+        for module in ('core', 'economy', 'vehicles'):
+            with self.subTest(module=module):
+                self.make_archive(omit='res/scripts/client/gui/mods/tanksession_analytics/' +
+                                  module + '.pyc')
+                with self.assertRaisesRegex(ValueError, 'Missing required modules'):
+                    verify_mtmod(self.archive)
 
     def test_reject_missing_ui_resource(self):
         self.make_archive(omit=UI_ROOT + 'app.js')

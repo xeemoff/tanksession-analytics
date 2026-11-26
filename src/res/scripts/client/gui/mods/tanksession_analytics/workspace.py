@@ -14,8 +14,9 @@ import tempfile
 import time
 
 from .core import _as_text, long_type
-from .goals import validate_goals
+from .goals import migrate_goal_selectors, validate_goals
 from .recorder import _verified_account
+from .vehicles import resolve_selector, selector_resolver, selector_for
 
 MAX_PROFILE_BYTES = 65536
 MAX_EXPORT_ROWS = 100000
@@ -25,8 +26,8 @@ MUTATIONS = ('save_preferences', 'save_goal', 'delete_goal', 'export_csv')
 ACTIONS = ('initialize',) + MUTATIONS
 DEFAULT_PREFERENCES = {'vehicle': '', 'window': 10, 'tab': 'progress',
                        'density': 'normal', 'contrast': 'standard'}
-EXPORT_FIELDS = ('timestamp', 'vehicle', 'mode', 'map', 'outcome', 'damage', 'xp',
-                 'xp_base', 'kills', 'survived', 'shots', 'direct_hits',
+EXPORT_FIELDS = ('timestamp', 'vehicle', 'vehicle_id', 'mode', 'map', 'outcome', 'damage', 'xp',
+                 'xp_base', 'xp_bonus', 'kills', 'survived', 'shots', 'direct_hits',
                  'penetrations', 'assistance_radio', 'assistance_track',
                  'credits_gross', 'credits_net')
 try:
@@ -182,7 +183,9 @@ class Workspace(object):
     @staticmethod
     def _validate_profile(profile):
         if (not isinstance(profile, dict) or set(profile) != {'version', 'preferences', 'goals'}
-                or isinstance(profile['version'], bool) or profile['version'] != 1):
+                or isinstance(profile['version'], bool)
+                or not isinstance(profile['version'], (int, long_type))
+                or profile['version'] not in (1, 2)):
             raise ValueError('Invalid UI profile')
         preferences = validate_preferences(profile['preferences'])
         goals = profile['goals']
@@ -190,18 +193,18 @@ class Workspace(object):
             goals = validate_goals(goals)
             if any('account_id' in goal for goal in goals):
                 raise ValueError('Unexpected profile account selector')
-        return {'version': 1, 'preferences': preferences, 'goals': goals}
+        return {'version': profile['version'], 'preferences': preferences, 'goals': goals}
 
     def _load(self, account):
         key = self._key(account)
         if self.memory:
             return self._validate_profile(self._profiles.get(key, {
-                'version': 1, 'preferences': dict(DEFAULT_PREFERENCES), 'goals': None}))
+                'version': 2, 'preferences': dict(DEFAULT_PREFERENCES), 'goals': None}))
         path = self._path(account)
         if os.path.islink(os.path.dirname(path)) or os.path.islink(path):
             raise IOError('Linked UI profile is not supported')
         if not os.path.exists(path):
-            return {'version': 1, 'preferences': dict(DEFAULT_PREFERENCES), 'goals': None}
+            return {'version': 2, 'preferences': dict(DEFAULT_PREFERENCES), 'goals': None}
         with open(path, 'rb') as stream:
             data = stream.read(MAX_PROFILE_BYTES + 1)
         if len(data) > MAX_PROFILE_BYTES:
@@ -241,7 +244,8 @@ class Workspace(object):
         from .analytics import sort_records
         from .presentation import clean_own_records
         clean, unused = clean_own_records(records, account)
-        rows = [row for row in sort_records(clean) if not vehicle or row['vehicle'] == vehicle]
+        vehicle = resolve_selector(vehicle, clean)
+        rows = [row for row in sort_records(clean) if not vehicle or selector_for(row) == vehicle]
         if not rows:
             return {'status': 'error', 'code': 'no_data'}
         if len(rows) > MAX_EXPORT_ROWS:
@@ -273,7 +277,8 @@ class Workspace(object):
 
     def snapshot(self, records, account, request, legacy_goals=None, diagnostics=None,
                  source='game', now=None, pending_count=None):
-        from .presentation import build_snapshot, validate_request, _confirmed_account, _observed_time
+        from .presentation import (build_snapshot, clean_own_records, validate_request,
+                                   vehicle_labels, _confirmed_account, _observed_time)
         account = _confirmed_account(account)
         request = validate_request(request)
         observed = _observed_time(now)
@@ -297,6 +302,30 @@ class Workspace(object):
                 writable = False
         else:
             goals = profile['goals']
+        own, unused = clean_own_records(records, account)
+        resolve = selector_resolver(own)
+        legacy_profile = profile['version'] == 1
+        legacy_goal_keys = legacy_profile or profile['goals'] is None
+        # Upgrade selectors in memory. Persistence remains an explicit command,
+        # and a saved copy retains all older profile values for rollback.
+        profile = dict(profile, version=2, preferences=dict(profile['preferences']))
+        profile['preferences']['vehicle'] = resolve(profile['preferences']['vehicle'],
+                                                    legacy=legacy_profile)
+        goals = migrate_goal_selectors(goals, own,
+                                        lambda value: resolve(value, legacy=legacy_goal_keys))
+        if profile['goals'] is not None:
+            profile['goals'] = goals
+        request['vehicle'] = resolve(request['vehicle'])
+        if 'preferences' in request:
+            request['preferences'] = dict(request['preferences'])
+            request['preferences']['vehicle'] = resolve(request['preferences']['vehicle'])
+        if 'goal' in request:
+            request['goal'] = dict(request['goal'])
+            original_key = (request['goal']['vehicle'], request['goal']['window'])
+            # Conflicting legacy targets keep their individual keys so that
+            # deleting one old goal cannot delete another after aliasing.
+            if not any((goal['vehicle'], goal['window']) == original_key for goal in goals):
+                request['goal']['vehicle'] = resolve(request['goal']['vehicle'])
         action = request.get('action')
         if action == 'initialize' or (action is None and request['request_id'] == 'initial'):
             request['vehicle'] = profile['preferences']['vehicle']
@@ -340,7 +369,15 @@ class Workspace(object):
         snapshot = build_snapshot(records, account, request=request, goals=goals,
                                   diagnostics=diagnostics, source=source, now=observed,
                                   pending_count=pending_count)
+        labels = vehicle_labels(own)
+        visible_goals = []
+        for goal in goals:
+            value = dict(goal)
+            label = labels.get(resolve(goal['vehicle']))
+            if label is not None:
+                value['vehicle_label'] = label
+            visible_goals.append(value)
         snapshot['workspace'] = {'version': 1, 'can_edit': writable,
                                  'preferences': dict(profile['preferences']),
-                                 'goals': goals, 'operation': operation}
+                                 'goals': visible_goals, 'operation': operation}
         return snapshot

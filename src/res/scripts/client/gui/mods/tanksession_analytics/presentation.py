@@ -9,13 +9,14 @@ never cross the presentation boundary.
 import re
 import time
 
-from .analytics import rolling_damage, sort_records, vehicle_table, window_comparison
+from .analytics import rolling_damage, sort_records, window_comparison
 from .coach import build_coach
-from .core import _as_text, by_day, long_type, record_is_complete, summarize, validate_record
-from .goals import evaluate_goals, validate_goals
+from .core import _as_text, by_day, by_vehicle, long_type, record_is_complete, summarize, validate_record
+from .goals import evaluate_goals, migrate_goal_selectors, validate_goals
 from .insights import build_metrics, build_sessions
 from .recorder import _verified_account
 from .workspace import validate_command
+from .vehicles import resolve_records, selector_resolver, selector_for
 
 try:
     _text_types = (str, unicode)
@@ -36,7 +37,7 @@ _REQUEST_FIELDS = frozenset(('protocol', 'request_id', 'vehicle', 'window', 'pag
                              'action', 'preferences', 'goal'))
 PAGE_SIZE = 5
 DETAIL_FIELDS = ('map', 'kills', 'survived', 'shots', 'direct_hits', 'penetrations',
-                 'xp_base', 'credits_gross', 'credits_net', 'assistance_radio',
+                 'xp_base', 'xp_bonus', 'credits_gross', 'credits_net', 'assistance_radio',
                  'assistance_track')
 
 
@@ -154,15 +155,74 @@ def clean_own_records(records, account):
             invalid += 1
             continue
         # Optional outliers must not hide previously readable primary metrics.
-        for name in ('kills', 'shots', 'direct_hits', 'penetrations', 'xp_base',
+        for name in ('kills', 'shots', 'direct_hits', 'penetrations', 'xp_base', 'xp_bonus',
                      'credits_gross', 'credits_net'):
             value = record.get(name)
             if value is not None and abs(value) > MAX_JS_INTEGER:
                 record[name] = None
                 invalid += 1
         own.append(record)
-    ordered = sort_records(own)
+    ordered = sort_records(resolve_records(own, account))
     return ordered, invalid + len(own) - len(ordered)
+
+
+def vehicle_labels(records):
+    """Display names are separate from selectors and never establish identity."""
+    candidates = {}
+    for row in records:
+        selector = selector_for(row)
+        label = row.get('vehicle_label') or row.get('vehicle')
+        if label and label != 'unknown':
+            candidates[selector] = label
+    duplicates = {}
+    for selector, label in candidates.items():
+        duplicates.setdefault(label, []).append(selector)
+    labels = {}
+    for selector, label in candidates.items():
+        if len(duplicates[label]) > 1:
+            if selector.startswith('type:'):
+                suffix = u' · #' + selector[5:]
+            elif selector.startswith('name:'):
+                suffix = u' · ' + selector[5:]
+            else:
+                suffix = u' · старая запись'
+            label = label[:128 - len(suffix)] + suffix
+        if label != selector:
+            labels[selector] = label
+    return labels
+
+
+def _projected_vehicle_table(records):
+    # Rows here already carry selectors in vehicle. Reapplying the raw-row
+    # identity boundary would escape a reserved legacy selector twice.
+    return sorted(by_vehicle(records).items(),
+                  key=lambda entry: (-entry[1]['battles'], entry[0]))
+
+
+def _project_vehicle_records(records, labels):
+    projected = []
+    for row in records:
+        item = dict(row)
+        selector = selector_for(row)
+        if selector in labels:
+            item['vehicle_label'] = labels[selector]
+        item['vehicle'] = selector
+        projected.append(item)
+    return projected
+
+
+def _labelled(value, selector, labels, field='vehicle_label'):
+    label = labels.get(selector)
+    if label is not None:
+        value[field] = label
+    return value
+
+
+def _history_row(row, fields):
+    value = dict((key, row.get(key)) for key in fields)
+    if row.get('vehicle_label') is not None:
+        value['vehicle_label'] = row['vehicle_label']
+    return value
 
 
 def _add_pagination(snapshot, selected, request):
@@ -174,7 +234,7 @@ def _add_pagination(snapshot, selected, request):
     end = total - page * PAGE_SIZE
     start = max(0, end - PAGE_SIZE)
     fields = ('timestamp', 'vehicle', 'outcome', 'damage', 'xp') + DETAIL_FIELDS
-    snapshot['history'] = [dict((key, row.get(key)) for key in fields)
+    snapshot['history'] = [_history_row(row, fields)
                            for row in reversed(selected[start:end])]
     snapshot['pagination'] = {'page': page, 'page_size': PAGE_SIZE,
                               'pages': pages, 'total': total}
@@ -195,6 +255,8 @@ def _build_insights(selected, pending_count):
     else:
         outcome = None
     days = by_day(selected)
+    labels = dict((row['vehicle'], row['vehicle_label']) for row in selected
+                  if row.get('vehicle_label') is not None)
 
     def assistance(field):
         values = [row[field] for row in selected if row[field] is not None]
@@ -210,8 +272,8 @@ def _build_insights(selected, pending_count):
         'streak': {'outcome': outcome, 'length': length},
         'days': [{'label': day, 'summary': days[day]}
                  for day in sorted(days, reverse=True)[:MAX_INSIGHT_DAYS]],
-        'tanks': [{'label': name, 'summary': stats}
-                  for name, stats in vehicle_table(selected)[:MAX_INSIGHT_VEHICLES]],
+        'tanks': [_labelled({'label': name, 'summary': stats}, name, labels)
+                  for name, stats in _projected_vehicle_table(selected)[:MAX_INSIGHT_VEHICLES]],
         'assistance_radio': assistance('assistance_radio'),
         'assistance_track': assistance('assistance_track'),
     }
@@ -255,21 +317,32 @@ def build_snapshot(records, account_id, request=None, goals=None, diagnostics=No
     clean_goals = validate_goals([] if goals is None else goals)
     for goal in clean_goals:
         _text(goal['vehicle'], 128, 'goal vehicle')
-    own, rejected = clean_own_records(records, account)
+    raw_own, rejected = clean_own_records(records, account)
+    resolve = selector_resolver(raw_own)
+    request['vehicle'] = resolve(request['vehicle'])
+    # Resolve legacy goal names only inside this account. Conflicting old goals
+    # remain separate until an explicit edit; reading never rewrites a profile.
+    clean_goals = migrate_goal_selectors([
+        goal for goal in clean_goals
+        if 'account_id' not in goal or goal['account_id'] == account], raw_own, resolve)
+    labels = vehicle_labels(raw_own)
+    own = _project_vehicle_records(raw_own, labels)
     invalid += rejected
     invalid = _counter(invalid, 'invalid_records')
-    vehicles = [{'name': name, 'battles': stats['battles']}
-                for name, stats in vehicle_table(own)]
+    vehicles = [_labelled({'name': name, 'battles': stats['battles']},
+                         name, labels, field='label')
+                for name, stats in _projected_vehicle_table(own)]
     if len(vehicles) > MAX_VEHICLES:
         raise ValueError('Too many vehicles for a presentation snapshot')
     selected = [row for row in own
                 if not request['vehicle'] or row['vehicle'] == request['vehicle']]
     relevant_goals = [goal for goal in clean_goals
-                      if not request['vehicle'] or goal['vehicle'] == request['vehicle']]
+                      if not request['vehicle'] or
+                      resolve(goal['vehicle']) == request['vehicle']]
     rendered_goals = []
-    for goal in evaluate_goals(selected, relevant_goals, account_id=account):
-        rendered_goals.append(dict((key, value) for key, value in goal.items()
-                                   if key != 'account_id'))
+    for goal in evaluate_goals(raw_own, relevant_goals, account_id=account):
+        value = dict((key, value) for key, value in goal.items() if key != 'account_id')
+        rendered_goals.append(_labelled(value, resolve(goal['vehicle']), labels))
     # These calculations only depend on their trailing windows. Limit the
     # repeated sorts inside analytics while preserving absolute battle numbers.
     comparison_rows = selected[-2 * request['window']:]
@@ -277,17 +350,18 @@ def build_snapshot(records, account_id, request=None, goals=None, diagnostics=No
     trend_offset = len(selected) - len(trend_rows)
     snapshot = _empty_snapshot(request, source, observed,
                                'ready' if selected else 'empty')
+    coach = build_coach(selected, request['vehicle'], request['window'])
+    _labelled(coach, coach['vehicle'], labels)
     snapshot.update({
         'vehicles': vehicles,
         'summary': summarize(selected),
         'comparison': window_comparison(comparison_rows, request['window']),
-        'coach': build_coach(selected, request['vehicle'], request['window']),
+        'coach': coach,
         'series': [{'battle': battle + trend_offset, 'avg_damage': average, 'known_damage': known}
                    for battle, average, known in rolling_damage(
                        trend_rows, request['window'], max_points=MAX_SERIES)],
         'goals': rendered_goals,
-        'history': [dict((key, row[key])
-                         for key in ('timestamp', 'vehicle', 'outcome', 'damage', 'xp'))
+        'history': [_history_row(row, ('timestamp', 'vehicle', 'outcome', 'damage', 'xp'))
                     for row in reversed(selected[-MAX_HISTORY:])],
         'quality': {
             'total_records': len(selected),
