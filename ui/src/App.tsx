@@ -83,7 +83,7 @@ function Metric({ label, value, detail, emphasis = false, testId }: {
 export function Trend({ series, windowSize }: { series: Snapshot['series']; windowSize: WindowSize }) {
   const known = series.filter(point => point.avg_damage !== null);
   if (known.length === 0) return <div className="chart-empty">
-    <span className="empty-chart-icon">∿</span><strong>График появится после {windowSize} боёв</strong>
+    <strong>{'График появится после ' + windowSize + ' боёв'}</strong>
     <span>Для каждой точки нужен известный урон минимум в 70% боёв окна.</span>
   </div>;
   const values = known.map(point => point.avg_damage as number);
@@ -113,7 +113,7 @@ export function Trend({ series, windowSize }: { series: Snapshot['series']; wind
         ? <circle key={'isolated-' + index} cx={x(index)} cy={y(point.avg_damage)} r="3" fill="#dfb875" /> : null)}
       <circle cx={x(lastIndex)} cy={y(series[lastIndex].avg_damage as number)} r="4" fill="#dfb875" />
     </svg>
-    <div className="chart-axis"><span>Бой {series[0].battle}</span><span>{formatNumber(min)} — {formatNumber(max)} урона</span><span>Бой {series[series.length - 1].battle}</span></div>
+    <div className="chart-axis"><span>{'Бой ' + series[0].battle}</span><span>{formatNumber(min) + ' — ' + formatNumber(max) + ' урона'}</span><span>{'Бой ' + series[series.length - 1].battle}</span></div>
   </div>;
 }
 
@@ -128,12 +128,12 @@ function GoalCard({ goals, selected }: { goals: Goal[]; selected: string }) {
   return <section className="goal-card">
     <div className="section-heading"><h2>Личная цель</h2><span className="subtle-tag">{goal.window} БОЁВ</span></div>
     <div className="goal-vehicle"><span className="target-symbol">◎</span><strong>{vehicleLabel(goal.vehicle)}</strong></div>
-    <div className="goal-values"><strong>{formatNumber(goal.avg_damage)}</strong><span>/ {formatNumber(goal.target)}</span></div>
+    <div className="goal-values"><strong>{formatNumber(goal.avg_damage)}</strong><span>{'/ ' + formatNumber(goal.target)}</span></div>
     <span className="small muted">средний урон за серию</span>
     <div className="progress-track" role="progressbar" aria-valuenow={Math.round(percent)} aria-valuemin={0} aria-valuemax={100} aria-label="Прогресс среднего урона">
       <div className={'progress-fill' + (achieved ? ' progress-done' : '')} style={{ width: percent + '%' }} />
     </div>
-    <div className="goal-status"><span className={achieved ? 'positive' : 'muted'}>{goalLabels[goal.status]}</span><span>{goal.battles}/{goal.window}</span></div>
+    <div className="goal-status"><span className={achieved ? 'positive' : 'muted'}>{goalLabels[goal.status]}</span><span>{goal.battles + '/' + goal.window}</span></div>
     <span className="tiny muted">Урон известен в {goal.known_damage} боях. Достижение учитывает полноту серии.</span>
   </section>;
 }

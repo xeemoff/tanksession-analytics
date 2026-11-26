@@ -246,3 +246,13 @@ h2 { display: flex; flex-direction: row; color: #dfe7d8; font-size: 15px; line-h
   .coach-count { flex-wrap: wrap; }
   .coach-count > span:last-child { flex: 1 1 auto; }
 }
+
+/* Native layout: a stable panel, with only the surrounding view transparent.
+   Leave a small margin; browser preview keeps its existing background. */
+body.native-gameface, .native-gameface .page { background-color: transparent; }
+.native-gameface .page { padding: 8px; }
+.native-gameface .panel { height: 100%; }
+.native-gameface .panel-content { flex: 1 1 auto; }
+.chart-empty strong { display: block; font-size: 15px; }
+.chart-empty > span { display: block; font-size: 13px; }
+.trend-note, .goal-empty p { font-size: 12px; line-height: 18px; }

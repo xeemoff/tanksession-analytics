@@ -219,6 +219,7 @@ class NativeRuntime(object):
 class NativeWindow(object):
     def __init__(self, window, model, statuses):
         self.window, self.model, self.statuses = window, model, statuses
+        self._center_attempted = False
 
     def load(self):
         self.window.load()
@@ -231,6 +232,23 @@ class NativeWindow(object):
         if status in (self.statuses.DESTROYING, self.statuses.DESTROYED):
             return False
         return not self.ready() or self.window.proxy is not None
+
+    def center_once(self):
+        """Best effort after the first frontend request (which follows resize).
+
+        Do not move the window on later filters, and never make a missing
+        window-position API a prerequisite for viewing the snapshot.
+        """
+        if self._center_attempted or not self.ready():
+            return None
+        self._center_attempted = True
+        try:
+            center = getattr(self.window, 'center', None)
+            if not callable(center):
+                return False
+            return center() is not False
+        except Exception:
+            return False
 
     def publish(self, payload):
         with self.model.transaction() as model:
@@ -458,6 +476,15 @@ class GamefaceController(object):
                 return
             self._window.publish(payload)
             self._last_request = request
+            # JS requests its first snapshot after resizeViewPx. Positioning is
+            # cosmetic and must not close or invalidate a working window.
+            center = getattr(self._window, 'center_once', None)
+            if callable(center):
+                try:
+                    if center() is False:
+                        self._report('center', 'window centering unavailable')
+                except Exception:
+                    self._report('center', 'window centering unavailable')
         except Exception as error:
             self._report('snapshot', 'snapshot delivery failed; window closed', error)
             self.close()
