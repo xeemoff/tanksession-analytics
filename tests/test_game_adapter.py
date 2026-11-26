@@ -378,6 +378,86 @@ class GameAdapterTests(unittest.TestCase):
         self.game.fini()
         self.assertEqual(cancelled, [1])
 
+    def test_recovery_retry_timer_stops_after_bounded_batch(self):
+        self.game._load_cache_opt_in = lambda: True
+        callbacks, requests, delays = [], [], []
+        current = [1700000000]
+        self.game.time = types.SimpleNamespace(time=lambda: current[0])
+
+        def schedule(delay, callback):
+            delays.append(delay)
+            callbacks.append(callback)
+            return len(callbacks)
+
+        sys.modules['BigWorld'].callback = schedule
+        self.player.arenaUniqueID = None
+        self.player.battleResultsCache = types.SimpleNamespace(
+            get=lambda arena, callback: requests.append((arena, callback)))
+        self.game.init()
+        self.game._recovery.clock = lambda: current[0]
+        self.game._pending.start(1234, {'account_id': 88}, current[0])
+        self.game._on_account_become_player()
+        requests[-1][1](-10, None)
+        for index in range(4):
+            current[0] += 20
+            callbacks[index]()
+            requests[-1][1](-10, None)
+        self.assertEqual(len(requests), 5)  # initial event plus four checks
+        self.assertEqual(delays, [20.0] * 4)
+        self.assertEqual(self.game._timer_ids, [])
+        self.assertIsNone(self.game._recovery_timer_token)
+        self.assertIn('1234', self.game._pending.pending)
+
+    def test_leaving_hangar_cancels_recovery_when_ui_is_disabled(self):
+        self.game._load_cache_opt_in = lambda: True
+        self.events.onDisconnected = Event()
+        self.events.onAccountBecomeNonPlayer = Event()
+        callbacks, requests, cancelled = [], [], []
+
+        def schedule(delay, callback):
+            callbacks.append(callback)
+            return len(callbacks)
+
+        sys.modules['BigWorld'].callback = schedule
+        sys.modules['BigWorld'].cancelCallback = cancelled.append
+        self.player.arenaUniqueID = None
+        self.player.battleResultsCache = types.SimpleNamespace(
+            get=lambda arena, callback: requests.append((arena, callback)))
+        self.game.init()
+        now = int(self.game.time.time())
+        self.game._pending.start(1234, {'account_id': 88}, now)
+        self.game._on_account_become_player()
+        self.assertEqual(len(requests), 1)
+        self.events.onDisconnected.fire()
+        self.assertEqual(cancelled, [1])
+        self.assertFalse(self.game._recovery.has_work())
+        callbacks[0]()
+        requests[0][1](0, {'arenaUniqueID': 1234,
+                            'common': {'winnerTeam': 1},
+                            'personal': {42: {'team': 1, 'damageDealt': 83, 'xp': 924}}})
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(self.game._store.records, [])
+
+    def test_cancelled_timer_cannot_consume_replacement_in_same_login(self):
+        self.game._load_cache_opt_in = lambda: True
+        callbacks = []
+
+        def schedule(delay, callback):
+            callbacks.append(callback)
+            return len(callbacks)
+
+        sys.modules['BigWorld'].callback = schedule
+        self.game.init()
+        self.game._schedule_recovery_checks()
+        generation = self.game._login_generation
+        self.game._cancel_recovery_timers()
+        self.game._schedule_recovery_checks()
+        self.assertEqual(self.game._login_generation, generation)
+        callbacks[0]()
+        self.assertEqual(self.game._timer_ids, [2])
+        callbacks[1]()
+        self.assertEqual(self.game._timer_ids, [])
+
     def _install_optional_ui(self, broken=False):
         hangar = types.SimpleNamespace(onSpaceCreate=Event())
         helpers = types.ModuleType('helpers')
@@ -529,7 +609,7 @@ class GameAdapterTests(unittest.TestCase):
         self.assertEqual(self.events.onAccountBecomeNonPlayer.handlers, [])
         self.assertEqual(self.events.onDisconnected.handlers, [])
 
-    def test_ui_snapshot_is_scoped_to_fresh_account_and_invalid_goals_error(self):
+    def test_ui_snapshot_is_scoped_and_bad_legacy_goals_keep_history_readable(self):
         self.game.init()
         self.player.arenaUniqueID = None
         self.game._on_hangar_space_create()
@@ -546,8 +626,10 @@ class GameAdapterTests(unittest.TestCase):
         path = os.path.join(self.folder.name, 'goals.json')
         with open(path, 'w') as stream:
             stream.write('invalid goals with PRIVATE_VALUE')
-        with self.assertRaises(ValueError):
-            self.game._ui_snapshot('99', None)
+        broken = self.game._ui_snapshot('99', None)
+        self.assertEqual(broken['summary']['battles'], 1)
+        self.assertFalse(broken['workspace']['can_edit'])
+        self.assertEqual(broken['workspace']['operation']['code'], 'read_failed')
         self.assertFalse(any('PRIVATE_VALUE' in line for line in self.notes))
         with open(path, 'w') as stream:
             json.dump([], stream)

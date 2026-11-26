@@ -13,7 +13,9 @@ from .analytics import rolling_damage, sort_records, vehicle_table, window_compa
 from .coach import build_coach
 from .core import _as_text, by_day, long_type, record_is_complete, summarize, validate_record
 from .goals import evaluate_goals, validate_goals
+from .insights import build_metrics, build_sessions
 from .recorder import _verified_account
+from .workspace import validate_command
 
 try:
     _text_types = (str, unicode)
@@ -30,7 +32,12 @@ MAX_RAW_POINTS = 24
 MAX_INSIGHT_DAYS = 14
 MAX_INSIGHT_VEHICLES = 20
 _REQUEST_ID = re.compile(r'^[A-Za-z0-9_.:-]{1,64}\Z')
-_REQUEST_FIELDS = frozenset(('protocol', 'request_id', 'vehicle', 'window'))
+_REQUEST_FIELDS = frozenset(('protocol', 'request_id', 'vehicle', 'window', 'page',
+                             'action', 'preferences', 'goal'))
+PAGE_SIZE = 5
+DETAIL_FIELDS = ('map', 'kills', 'survived', 'shots', 'direct_hits', 'penetrations',
+                 'xp_base', 'credits_gross', 'credits_net', 'assistance_radio',
+                 'assistance_track')
 
 
 def _text(value, limit, name):
@@ -65,8 +72,8 @@ def validate_request(request):
             or window not in (10, 30, 100)):
         raise ValueError('Unsupported comparison window')
     vehicle = _text(request.get('vehicle', ''), 128, 'vehicle')
-    return {'protocol': PROTOCOL_VERSION, 'request_id': identifier,
-            'vehicle': vehicle, 'window': window}
+    return validate_command(request, {'protocol': PROTOCOL_VERSION, 'request_id': identifier,
+                                     'vehicle': vehicle, 'window': window})
 
 
 def _confirmed_account(value):
@@ -115,6 +122,63 @@ def _empty_snapshot(request, source, now, status):
                     'invalid_records': 0, 'conflicts': 0},
         'updated_at': now,
     }
+
+
+def clean_own_records(records, account):
+    """One shared boundary for presentation and explicit account-scoped export."""
+    account = _confirmed_account(account)
+    if account is None:
+        return [], 0
+    own, invalid = [], 0
+    for raw in records:
+        if not isinstance(raw, dict):
+            invalid += 1
+            continue
+        if _confirmed_account(raw.get('account_id')) != account:
+            continue
+        record = validate_record(raw)
+        if record is None:
+            invalid += 1
+            continue
+        if (len(record['vehicle']) > 128 or
+                any(record[name] is not None and record[name] > MAX_JS_INTEGER
+                    for name in ('timestamp', 'damage', 'xp', 'assistance_radio',
+                                 'assistance_track'))):
+            invalid += 1
+            continue
+        try:
+            record['vehicle'].encode('utf-8')
+            if record.get('map') is not None:
+                record['map'].encode('utf-8')
+        except UnicodeError:
+            invalid += 1
+            continue
+        # Optional outliers must not hide previously readable primary metrics.
+        for name in ('kills', 'shots', 'direct_hits', 'penetrations', 'xp_base',
+                     'credits_gross', 'credits_net'):
+            value = record.get(name)
+            if value is not None and abs(value) > MAX_JS_INTEGER:
+                record[name] = None
+                invalid += 1
+        own.append(record)
+    ordered = sort_records(own)
+    return ordered, invalid + len(own) - len(ordered)
+
+
+def _add_pagination(snapshot, selected, request):
+    if 'page' not in request:
+        return
+    total = len(selected)
+    pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    page = min(request['page'], pages - 1)
+    end = total - page * PAGE_SIZE
+    start = max(0, end - PAGE_SIZE)
+    fields = ('timestamp', 'vehicle', 'outcome', 'damage', 'xp') + DETAIL_FIELDS
+    snapshot['history'] = [dict((key, row.get(key)) for key in fields)
+                           for row in reversed(selected[start:end])]
+    snapshot['pagination'] = {'page': page, 'page_size': PAGE_SIZE,
+                              'pages': pages, 'total': total}
+    snapshot['selection']['page'] = page
 
 
 def _build_insights(selected, pending_count):
@@ -175,6 +239,9 @@ def build_snapshot(records, account_id, request=None, goals=None, diagnostics=No
         snapshot = _empty_snapshot(request, source, observed, 'account_unavailable')
         if include_insights:
             snapshot['insights'] = _build_insights([], None)
+            snapshot['metrics'] = build_metrics([])
+            snapshot['sessions'] = build_sessions([])
+        _add_pagination(snapshot, [], request)
         return snapshot
     if pending_count is not None:
         pending_count = _counter(pending_count, 'pending_count')
@@ -188,34 +255,9 @@ def build_snapshot(records, account_id, request=None, goals=None, diagnostics=No
     clean_goals = validate_goals([] if goals is None else goals)
     for goal in clean_goals:
         _text(goal['vehicle'], 128, 'goal vehicle')
-    own = []
-    for raw in records:
-        if not isinstance(raw, dict):
-            invalid += 1
-            continue
-        # Foreign records are not validated or used to populate dropdowns.
-        if _confirmed_account(raw.get('account_id')) != account:
-            continue
-        record = validate_record(raw)
-        if record is None:
-            invalid += 1
-            continue
-        if (len(record['vehicle']) > 128 or
-                any(record[name] is not None and record[name] > MAX_JS_INTEGER
-                    for name in ('timestamp', 'damage', 'xp', 'assistance_radio',
-                                 'assistance_track'))):
-            invalid += 1
-            continue
-        try:
-            record['vehicle'].encode('utf-8')
-        except UnicodeError:
-            invalid += 1
-            continue
-        own.append(record)
-    ordered = sort_records(own)
-    invalid += len(own) - len(ordered)
+    own, rejected = clean_own_records(records, account)
+    invalid += rejected
     invalid = _counter(invalid, 'invalid_records')
-    own = ordered
     vehicles = [{'name': name, 'battles': stats['battles']}
                 for name, stats in vehicle_table(own)]
     if len(vehicles) > MAX_VEHICLES:
@@ -256,4 +298,7 @@ def build_snapshot(records, account_id, request=None, goals=None, diagnostics=No
     })
     if include_insights:
         snapshot['insights'] = _build_insights(selected, pending_count)
+        snapshot['metrics'] = build_metrics(selected)
+        snapshot['sessions'] = build_sessions(own, request['vehicle'])
+    _add_pagination(snapshot, selected, request)
     return snapshot

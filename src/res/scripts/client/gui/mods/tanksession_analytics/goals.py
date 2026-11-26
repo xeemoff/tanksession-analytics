@@ -72,7 +72,9 @@ def evaluate_goals(records, goals, account_id=None):
             sample = own[-goal['window']:]
             stats = summarize(sample)
             complete = len(sample) == goal['window']
-            minimum = (7 * goal['window'] + 9) // 10
+            # A missing low-damage result must not award a target using only
+            # the visible high-damage subset of the window.
+            minimum = goal['window']
             if account is None:
                 status = 'no_data'
             elif not complete:

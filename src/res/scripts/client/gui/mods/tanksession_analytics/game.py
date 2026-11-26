@@ -29,9 +29,11 @@ _initialized = False
 _account_id = None
 _hooks = []
 _timer_ids = []
+_recovery_timer_token = None
 _login_generation = 0
 _notices = set()
 _gameface = None
+_ui_workspace = None
 _in_hangar = False
 _result_service_event = None
 
@@ -227,6 +229,7 @@ def _on_result_posted(reusable, *args, **kwargs):
             return
         _log('Own pending result posted in lobby')
         _try_recover(arena_id=arena, posted=True)
+        _schedule_recovery_checks()
     except Exception:
         _notice_once('result_posted', 'Lobby result hook unavailable in this client state')
 
@@ -266,13 +269,42 @@ def _try_recover(arena_id=None, posted=False):
         _log('Optional cache recovery unavailable in this client state')
 
 
-def _delayed_recovery(generation):
-    if _initialized and generation == _login_generation:
+def _delayed_recovery(generation, token, remaining):
+    global _recovery_timer_token
+    if (_initialized and generation == _login_generation and
+            token is _recovery_timer_token):
         del _timer_ids[:]
+        _recovery_timer_token = None
         _try_recover()
+        # Four checks per login/hangar/ready episode, never an endless loop.
+        # This also releases a serialized queue after a lost callback timeout.
+        try:
+            account = _recovery_account()
+            if (remaining > 1 and account is not None and _pending is not None and
+                    _pending.eligible(account, now=time.time())):
+                _schedule_recovery_checks(remaining - 1)
+        except Exception:
+            pass
+
+
+def _schedule_recovery_checks(remaining=4):
+    global _recovery_timer_token
+    if (_recovery is None or not _initialized or _timer_ids or remaining <= 0):
+        return
+    token = object()
+    _recovery_timer_token = token
+    try:
+        generation = _login_generation
+        _timer_ids.append(BigWorld.callback(
+            20.0, lambda current=generation, request=token, left=remaining:
+            _delayed_recovery(current, request, left)))
+    except Exception:
+        _recovery_timer_token = None
 
 
 def _cancel_recovery_timers():
+    global _recovery_timer_token
+    _recovery_timer_token = None
     for timer in _timer_ids:
         try:
             BigWorld.cancelCallback(timer)
@@ -304,13 +336,7 @@ def _on_account_become_player(*args, **kwargs):
     if _recovery is not None:
         _recovery.reset_session(_account_id)
     _try_recover()
-    if _recovery is not None:
-        try:
-            generation = _login_generation
-            _timer_ids.append(BigWorld.callback(
-                20.0, lambda current=generation: _delayed_recovery(current)))
-        except Exception:
-            pass
+    _schedule_recovery_checks()
 
 
 def _on_hangar_space_create(*args, **kwargs):
@@ -331,6 +357,7 @@ def _on_hangar_space_create(*args, **kwargs):
         _gameface.on_hangar()
     _attach_result_service()
     _try_recover()
+    _schedule_recovery_checks()
     try:
         from gui import SystemMessages
         if _store is None:
@@ -382,6 +409,9 @@ def _load_ui_opt_in():
 def _leave_hangar(*args, **kwargs):
     global _in_hangar
     _in_hangar = False
+    _cancel_recovery_timers()
+    if _recovery is not None:
+        _recovery.reset_session()
     if _gameface is not None:
         _gameface.close()
 
@@ -423,7 +453,9 @@ def _ui_goals():
 
 
 def _ui_snapshot(account, request):
+    global _ui_workspace
     from .presentation import build_snapshot
+    from .workspace import Workspace
     # The controller rechecks identity immediately before delivering this
     # snapshot, including if a provider caused a re-entrant client event.
     if account != _ui_account() or _store is None:
@@ -434,9 +466,12 @@ def _ui_snapshot(account, request):
     if _pending is not None:
         pending_count = sum(1 for item in _pending.pending.values()
                             if _verified_account(item.get('context', {}).get('account_id')) == account)
-    return build_snapshot(list(_store.records), account, request=request,
-                          goals=_ui_goals(), pending_count=pending_count,
-                          diagnostics=dict(_store.diagnostics), source='game')
+    folder = os.path.dirname(_store.path)
+    if _ui_workspace is None or _ui_workspace.folder != folder:
+        _ui_workspace = Workspace(folder)
+    return _ui_workspace.snapshot(list(_store.records), account, request=request,
+                                  legacy_goals=_ui_goals, pending_count=pending_count,
+                                  diagnostics=dict(_store.diagnostics), source='game')
 
 
 def _start_gameface():
@@ -454,8 +489,6 @@ def _start_gameface():
         if not _gameface.start():
             _gameface = None
             return
-        _attach_event('onAccountBecomeNonPlayer', _leave_hangar)
-        _attach_event('onDisconnected', _leave_hangar)
     except Exception as error:
         _error('Optional Gameface startup failed: ' + type(error).__name__)
         if _gameface is not None:
@@ -508,6 +541,9 @@ def init():
         _attach_event('onBattleResultsReceived', _on_battle_results, required=True)
         _attach_event('onAvatarReady', _on_avatar_ready)
         _attach_event('onAccountBecomePlayer', _on_account_become_player)
+        # Cancel delayed cache work even when the optional UI is disabled.
+        _attach_event('onAccountBecomeNonPlayer', _leave_hangar)
+        _attach_event('onDisconnected', _leave_hangar)
         _initialized = True
         _log('Started; local data path: ' + _store.path)
         try:
@@ -528,11 +564,12 @@ def init():
 def fini():
     global _initialized, _store, _pending, _recorder, _recovery, _hangar_space, _account_id
     global _login_generation
-    global _gameface, _in_hangar, _result_service_event
+    global _gameface, _in_hangar, _result_service_event, _ui_workspace
     _in_hangar = False
     if _gameface is not None:
         _gameface.stop()
     _gameface = None
+    _ui_workspace = None
     _login_generation += 1
     if _recovery is not None:
         _recovery.stop()

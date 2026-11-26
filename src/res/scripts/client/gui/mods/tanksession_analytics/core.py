@@ -53,6 +53,21 @@ def _non_negative_int(value):
         return None
 
 
+def _signed_int(value):
+    """Signed 64-bit local metrics, including a known negative net income."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = int(value)
+        if number < -MAX_RECORD_INTEGER - 1 or number > MAX_RECORD_INTEGER:
+            return None
+        if not isinstance(value, (bytes, _text_type, int, long_type)) and value != number:
+            return None
+        return number
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
 try:
     long_type = long
 except NameError:
@@ -142,12 +157,23 @@ def _validate_record(record):
         'mode': _record_text(record.get('mode'), 'unknown', 128),
         'outcome': outcome,
     }
-    for name in ('timestamp', 'damage', 'assistance_radio', 'assistance_track', 'xp'):
+    for name in ('timestamp', 'damage', 'assistance_radio', 'assistance_track', 'xp',
+                 'kills', 'shots', 'direct_hits', 'penetrations', 'xp_base',
+                 'credits_gross'):
         value = record.get(name)
         number = _non_negative_int(value)
         if value is not None and number is None:
             raise ValueError('Invalid numeric field: ' + name)
         clean[name] = number
+    clean['map'] = _record_text(record.get('map'), None, 128)
+    value = record.get('credits_net')
+    clean['credits_net'] = _signed_int(value)
+    if value is not None and clean['credits_net'] is None:
+        raise ValueError('Invalid numeric field: credits_net')
+    survived = record.get('survived')
+    if survived is not None and not isinstance(survived, bool):
+        raise ValueError('Invalid survived field')
+    clean['survived'] = survived
     clean['data_status'] = 'complete' if record_is_complete(clean) else 'incomplete'
     return clean
 
@@ -271,6 +297,19 @@ def normalize_result(results, context=None, observed_at=None):
     if when is None:
         return None
     mode = _get_first(common, ('bonusType',))
+    arena_type = _non_negative_int(common.get('arenaTypeID'))
+    death_reason = _signed_int(personal.get('deathReason'))
+    survived = None
+    if death_reason is not None and death_reason >= -1:
+        survived = death_reason == -1
+    # Reference 1.46 uses originalXP - achievementXP for its base XP row.
+    # Neither a missing achievement field nor total XP implies a zero bonus.
+    original_xp = _non_negative_int(personal.get('originalXP'))
+    achievement_xp = _non_negative_int(personal.get('achievementXP'))
+    base_xp = None
+    if (original_xp is not None and achievement_xp is not None and
+            original_xp >= achievement_xp):
+        base_xp = original_xp - achievement_xp
     record = {
         'schema': 1,
         'arena_id': identifier,
@@ -283,6 +322,17 @@ def normalize_result(results, context=None, observed_at=None):
         'assistance_radio': _non_negative_int(_get_first(personal, ('damageAssistedRadio',))),
         'assistance_track': _non_negative_int(_get_first(personal, ('damageAssistedTrack',))),
         'xp': _non_negative_int(_get_first(personal, ('xp', 'baseXP'))),
+        'map': 'arena:%s' % arena_type if arena_type else None,
+        'kills': _non_negative_int(personal.get('kills')),
+        'shots': _non_negative_int(personal.get('shots')),
+        'direct_hits': _non_negative_int(personal.get('directHits')),
+        'penetrations': _non_negative_int(personal.get('piercings')),
+        'survived': survived,
+        'xp_base': base_xp,
+        'credits_gross': _non_negative_int(personal.get('credits')),
+        # The reference API has no simple net field. Imported canonical
+        # records may contain it; do not invent it from incomplete expenses.
+        'credits_net': None,
     }
     return validate_record(record)
 

@@ -1,5 +1,5 @@
 import { asError, Bridge } from './bridge';
-import { Selection, Snapshot, SnapshotRequest } from './contracts';
+import { Selection, Snapshot, SnapshotRequest, UserCommand } from './contracts';
 
 export interface ViewState {
   phase: 'connecting' | 'loading' | 'ready' | 'error' | 'closed';
@@ -16,6 +16,7 @@ export class SnapshotController {
   private disposeBridge: (() => void) | null = null;
   private disposed = false;
   private connected = false;
+  private commandPending = false;
 
   constructor(private readonly bridge: Bridge, private readonly changed: (state: ViewState) => void,
     private readonly timeoutMs = 12000) {}
@@ -25,26 +26,37 @@ export class SnapshotController {
     this.disposeBridge = this.bridge.start(snapshot => this.receive(snapshot), error => this.error(error), () => {
       if (this.disposed) return;
       this.connected = true;
-      this.request(this.state.selection);
+      this.send(this.state.selection, { action: 'initialize' });
     });
   }
   request(selection: Selection = this.state.selection): void {
+    if (this.commandPending) return;
+    this.send(selection);
+  }
+  command(command: UserCommand): void {
+    if (command.action === 'initialize' || this.commandPending || this.state.phase !== 'ready' || !this.state.snapshot?.workspace?.can_edit) return;
+    this.send(this.state.selection, command);
+  }
+  private send(selection: Selection, command?: UserCommand): void {
     if (this.disposed || !this.connected || this.state.phase === 'closed') return;
     const id = 'ui-' + (++this.sequence);
     this.latest = id;
-    this.publish({ phase: 'loading', snapshot: null, selection: { ...selection }, message: '' });
+    this.commandPending = !!command && command.action !== 'initialize';
+    this.publish({ phase: 'loading', snapshot: this.commandPending ? this.state.snapshot : null, selection: { ...selection }, message: '' });
     this.armTimeout();
-    const request: SnapshotRequest = { protocol: 1, request_id: id, ...selection };
+    const request: SnapshotRequest = { protocol: 1, request_id: id, page: 0, ...selection, ...command };
     try { this.bridge.request(request); } catch (error) { this.error(asError(error)); }
   }
   private receive(snapshot: Snapshot): void {
     if (this.disposed || this.state.phase === 'closed' || (this.latest && snapshot.request_id !== this.latest)) return;
     this.clearTimeout();
+    this.commandPending = false;
     this.publish({ phase: 'ready', snapshot, selection: snapshot.selection, message: '' });
   }
   private error(error: Error): void {
     if (this.disposed || this.state.phase === 'closed') return;
     this.clearTimeout();
+    this.commandPending = false;
     this.publish({ ...this.state, phase: 'error', snapshot: null, message: error.message });
   }
   private publish(state: ViewState): void { this.state = state; this.changed(state); }

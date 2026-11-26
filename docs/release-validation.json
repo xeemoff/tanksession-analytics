@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "release_version": "1.0.0",
+  "target_client_version": "1.46.0.0",
+  "status": "pending",
+  "tested_package_sha256": null,
+  "tested_client_version": null,
+  "tested_at": null,
+  "checks": {
+    "normal_win": false,
+    "normal_loss": false,
+    "zero_damage": false,
+    "delayed_result": false,
+    "deduplication": false,
+    "restart_preserves_history": false,
+    "account_isolation": false,
+    "replay_exclusion": false,
+    "gameface_lifecycle": false,
+    "metrics_against_results": false,
+    "settings_goals_export": false,
+    "installation_uninstallation": false,
+    "performance": false
+  },
+  "evidence": "CLIENT_VALIDATION_RU.md"
+}

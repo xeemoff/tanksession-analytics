@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src/res/scripts/client/gui/mods'))
 from tanksession_analytics.presentation import build_snapshot
 from tanksession_analytics.storage import BattleStore
+from tanksession_analytics.workspace import Workspace
 
 
 def fixtures():
@@ -50,7 +51,15 @@ def fixtures():
     mixed_modes = coach_rows([1000] * 10 + [1200] * 10)
     for row in mixed_modes[10:]:
         row['mode'] = '7'
+    session_rows = coach_rows([1000] * 10 + [1200] * 10)
+    for row in session_rows[10:]:
+        row['timestamp'] += 7200
+    release = Workspace(str(ROOT / 'sample_data'), memory=True).snapshot(
+        session_rows, 'demo', {'protocol': 1, 'request_id': 'fixture',
+                               'vehicle': 'IS-7', 'window': 10, 'page': 0},
+        legacy_goals=goals, source='demo', now=observed)
     return {
+        'release.json': release,
         'demo.json': snapshot(rows),
         'demo_filters.json': variants,
         'empty.json': snapshot([]),

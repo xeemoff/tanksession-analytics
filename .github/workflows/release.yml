@@ -1,0 +1,125 @@
+name: Validated release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/release-request.json'
+    tags:
+      - 'v[0-9]*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-tag:
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Match the immutable tag to project metadata
+        id: version
+        env:
+          RELEASE_REF: ${{ github.ref_name }}
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools')
+          from build import project_metadata
+          from package_release import VERSION
+          _, version = project_metadata()
+          if os.environ['RELEASE_REF_TYPE'] == 'tag':
+              tag = os.environ['RELEASE_REF']
+          else:
+              request = json.loads(Path('.github/release-request.json').read_text())
+              if set(request) != {'schema', 'tag'} or request['schema'] != 1:
+                  raise SystemExit('Invalid explicit release request')
+              tag = request['tag']
+          if not VERSION.fullmatch(version) or tag != 'v' + version:
+              raise SystemExit('Tag does not match src/meta.xml')
+          if not Path('docs/releases/v' + version + '.md').is_file():
+              raise SystemExit('Release notes are missing')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write('tag=' + tag + '\n')
+          PY
+
+  checks:
+    needs: validate-tag
+    uses: ./.github/workflows/tests.yml
+    permissions:
+      contents: read
+
+  publish:
+    needs: [validate-tag, checks]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: tanksession-mtmod-candidate-${{ github.sha }}
+          path: candidate
+      - name: Inspect the tested package and enforce the publication gate
+        env:
+          RELEASE_TAG: ${{ needs.validate-tag.outputs.tag }}
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'tools')
+          from build import project_metadata
+          from package_release import build_release
+          mod_id, version = project_metadata()
+          package = Path('candidate') / (mod_id + '_' + version + '.mtmod')
+          bundle, info = build_release(package, tag=os.environ['RELEASE_TAG'])
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as env:
+              env.write('RELEASE_VERSION=' + version + '\n')
+              env.write('RELEASE_CHANNEL=' + info['channel'] + '\n')
+          print('Windows bundle SHA-256:', info['archive_sha256'])
+          print('Native validation:', info['native_validation'])
+          PY
+      - name: Publish the new release without replacing existing tags or assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate-tag.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo 'A release already exists; its tag and assets will not be replaced.'
+            exit 1
+          fi
+          existing_commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq .sha 2>/dev/null || true)
+          if [ -n "$existing_commit" ] && [ "$existing_commit" != "$GITHUB_SHA" ]; then
+            echo 'The existing tag points to another commit; publication stopped.'
+            exit 1
+          fi
+          flags=()
+          if [ "$RELEASE_CHANNEL" = prerelease ]; then
+            flags+=(--prerelease --latest=false)
+          else
+            flags+=(--latest)
+          fi
+          gh release create "$RELEASE_TAG" \
+            candidate/*.mtmod candidate/*.mtmod.sha256 \
+            dist/*_Windows.zip dist/*_Windows.zip.sha256 \
+            --target "$GITHUB_SHA" --title "TankSession Analytics $RELEASE_VERSION" \
+            --notes-file "docs/releases/v${RELEASE_VERSION}.md" "${flags[@]}"

@@ -212,7 +212,9 @@ class BattleStore(object):
         merged = dict(previous)
         changed = False
         for name in ('vehicle', 'mode', 'outcome', 'damage', 'xp',
-                     'assistance_radio', 'assistance_track'):
+                     'assistance_radio', 'assistance_track', 'map', 'kills',
+                     'survived', 'shots', 'direct_hits', 'penetrations',
+                     'xp_base', 'credits_gross', 'credits_net'):
             old, new = previous.get(name), incoming.get(name)
             old_missing = old is None or old == 'unknown'
             new_missing = new is None or new == 'unknown'

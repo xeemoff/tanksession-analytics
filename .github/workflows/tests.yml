@@ -1,5 +1,10 @@
 name: Tests and candidate builds
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+  workflow_call:
 
 permissions:
   contents: read
@@ -72,8 +77,7 @@ jobs:
           path: |
             dist/*_Preview.zip
             dist/*_Preview.zip.sha256
-            ui/test-results/hangar-demo.png
-            ui/test-results/hangar-coach.png
+            ui/test-results/hangar-*.png
           if-no-files-found: error
           retention-days: 14
       - name: Upload browser failure details
@@ -136,6 +140,9 @@ jobs:
           python -m unittest discover -s tests -p test_build.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_gameface.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_coach.py -v
+          "$PYTHON2" -m unittest discover -s tests -p test_workspace.py -v
+          "$PYTHON2" -m unittest discover -s tests -p test_insights.py -v
+          "$PYTHON2" -m unittest discover -s tests -p test_optional_metrics.py -v
       - name: Build candidate and inspect structure
         shell: bash
         run: |
@@ -145,6 +152,21 @@ jobs:
         shell: bash
         working-directory: dist
         run: sha256sum --check --strict *.sha256
+      - name: Package the Windows installation candidate
+        shell: bash
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, 'tools')
+          from build import project_metadata
+          from package_release import build_release
+          if '-' in project_metadata()[1]:
+              bundle, info = build_release()
+              print('Windows candidate:', bundle)
+              print('SHA-256:', info['archive_sha256'])
+          else:
+              print('Stable Windows bundle is prepared by the gated release workflow.')
+          PY
       - name: Upload test candidate (not a validated game release)
         uses: actions/upload-artifact@v4
         with:
@@ -152,5 +174,6 @@ jobs:
           path: |
             dist/*.mtmod
             dist/*.sha256
+            dist/*_Windows.zip
           if-no-files-found: error
           retention-days: 14

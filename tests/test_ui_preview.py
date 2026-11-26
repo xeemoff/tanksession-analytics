@@ -2,10 +2,13 @@ import errno
 import http.client
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import threading
 import unittest
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,6 +60,44 @@ class UiPreviewTests(unittest.TestCase):
             return response.status, dict(response.getheaders()), response.read()
         finally:
             connection.close()
+
+    def post(self, data, headers=None):
+        connection = http.client.HTTPConnection('127.0.0.1', self.server.server_port, timeout=5)
+        try:
+            connection.request('POST', '/api/command', body=json.dumps(data), headers=headers or {
+                'Content-Type': 'application/json', 'X-TankSession-Request': '1'})
+            response = connection.getresponse()
+            return response.status, response.read()
+        finally:
+            connection.close()
+
+    def test_initialization_reads_preferences_but_real_preview_is_read_only_by_default(self):
+        request = dict(protocol=1, request_id='init', vehicle='', window=10,
+                       page=0, action='initialize')
+        status, body = self.post(request)
+        self.assertEqual(status, 200)
+        self.assertFalse(json.loads(body)['workspace']['can_edit'])
+        request['action'] = 'export_csv'
+        self.assertEqual(self.post(request)[0], 403)
+        self.assertFalse((Path(self.folder.name) / 'exports').exists())
+
+    def test_cross_origin_or_form_commands_are_rejected(self):
+        request = dict(protocol=1, request_id='init', vehicle='', window=10, action='initialize')
+        for headers in ({'Content-Type': 'text/plain'},
+                        {'Content-Type': 'application/json'},
+                        {'Content-Type': 'application/json', 'X-TankSession-Request': '1',
+                         'Origin': 'https://unrelated.example'},
+                        {'Content-Type': 'application/json', 'X-TankSession-Request': '1',
+                         'Sec-Fetch-Site': 'cross-site'}):
+            self.assertEqual(self.post(request, headers)[0], 403)
+
+    def test_pages_are_bounded_and_query_cannot_mutate(self):
+        status, _, body = self.get('/api/snapshot?request_id=page&window=10&page=100')
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)['pagination']['page'], 0)
+        for query in ('page=-1', 'page=1.5', 'page=true', 'page=1&page=2',
+                      'action=export_csv'):
+            self.assertEqual(self.get('/api/snapshot?' + query)[0], 400)
 
     def test_snapshot_is_pinned_to_one_account(self):
         status, headers, body = self.get('/api/snapshot?request_id=test-1&window=10')
@@ -113,6 +154,36 @@ class UiPreviewTests(unittest.TestCase):
 
 
 class UiPreviewConfigurationTests(unittest.TestCase):
+    def test_distributed_preview_starts_without_unbundled_source_modules(self):
+        import package_preview
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for relative in ('LICENSE', 'demo_hangar.cmd', 'tools/preview_ui.py',
+                             'tools/dashboard.py', 'sample_data/battles.jsonl', 'sample_data/goals.json'):
+                target = root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ROOT / relative, target)
+            shutil.copytree(ROOT / 'src', root / 'src', ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+            assets = root / 'ui/dist'
+            assets.mkdir(parents=True)
+            for name in ('index.html', 'app.js', 'app.css', 'THIRD_PARTY_LICENSES.txt'):
+                (assets / name).write_text('Preview fixture', encoding='utf-8')
+            previous = package_preview.ROOT
+            package_preview.ROOT = root
+            try:
+                archive_path = package_preview.build_preview()
+            finally:
+                package_preview.ROOT = previous
+            extracted = root / 'extracted'
+            with zipfile.ZipFile(archive_path) as archive:
+                archive.extractall(extracted)
+            environment = dict(os.environ, PYTHONPATH='')
+            result = subprocess.run([sys.executable, 'tools/preview_ui.py', '--help'], cwd=extracted,
+                                    env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    encoding='utf-8', timeout=15)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('--allow-write', result.stdout)
+
     def test_external_interface_is_rejected_before_any_bind(self):
         with self.assertRaisesRegex(ValueError, 'loopback'):
             create_ui_server('unused.jsonl', '101', host='0.0.0.0')

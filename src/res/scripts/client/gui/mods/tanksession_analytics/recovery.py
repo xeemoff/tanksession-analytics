@@ -6,6 +6,7 @@ The signature cache.get(arena_uid, callback(error_code, result)) is
 consistent with a reference client branch. Actual MT support remains opt-in.
 """
 import time
+from collections import OrderedDict
 
 from .recorder import _verified_account
 
@@ -17,7 +18,8 @@ except NameError:
 
 class CacheRecovery(object):
     def __init__(self, pending, recorder, log=None, cooldown=15, max_requests=5,
-                 account_provider=None, on_record=None, serialize=False):
+                 account_provider=None, on_record=None, serialize=False,
+                 max_deferred=32, clock=None):
         self.pending = pending
         self.recorder = recorder
         self.log = log or (lambda message: None)
@@ -26,7 +28,12 @@ class CacheRecovery(object):
         self.account_provider = account_provider
         self.on_record = on_record
         self.serialize = serialize
+        self.max_deferred = max(0, int(max_deferred))
+        self.clock = clock or time.time
         self._posted_attempted = set()
+        self._deferred = OrderedDict()
+        self._cache = None
+        self._polling = False
         self.in_flight = {}
         self.attempted = {}
         self._request_tokens = {}
@@ -35,8 +42,7 @@ class CacheRecovery(object):
 
     def stop(self):
         self.active = False
-        self.in_flight.clear()
-        self._request_tokens.clear()
+        self.reset_session()
 
     def reset_session(self, account_id=None):
         """Invalidate callbacks even when a new login reuses the same account.
@@ -49,8 +55,15 @@ class CacheRecovery(object):
         self._request_tokens.clear()
         self.attempted.clear()
         self._posted_attempted.clear()
+        self._deferred.clear()
+        self._cache = None
 
-    def poll(self, cache, account_id, now=None, arena_id=None, posted=False):
+    def has_work(self):
+        """Whether a bounded caller timer still needs to watch this batch."""
+        return bool(self._deferred or self.in_flight)
+
+    def poll(self, cache, account_id, now=None, arena_id=None, posted=False,
+             _deferred_only=False):
         """Return attempted requests, including calls that raise immediately."""
         if not self.active:
             return 0
@@ -59,59 +72,116 @@ class CacheRecovery(object):
             self.reset_session(account)
         if account is None or cache is None or not callable(getattr(cache, 'get', None)):
             return 0
-        now = time.time() if now is None else now
-        count = 0
-        # The native cache may serialize its own requests. Do not compete
-        # with a still-running request issued by this adapter.
-        if self.serialize and any(now - started < 60
-                                  for started in self.in_flight.values()):
-            return 0
+        if self.account_provider is not None:
+            try:
+                if _verified_account(self.account_provider()) != account:
+                    self.reset_session()
+                    return 0
+            except Exception:
+                self.reset_session()
+                return 0
+        now = self.clock() if now is None else now
+        self._cache = cache
         entries = self.pending.eligible(account, now=now)
-        if arena_id is not None:
-            entries = [entry for entry in entries
-                       if str(entry['arena_id']) == str(arena_id)]
-        # Prefer untried entries, newest first; then least recently attempted.
-        entries = sorted(reversed(entries),
-                         key=lambda entry: self.attempted.get(entry['arena_id'], -1e100))
-        for entry in entries:
-            if count >= self.max_requests:
-                break
-            arena = entry['arena_id']
-            if arena in self.in_flight:
-                if now - self.in_flight[arena] < 60:
+        eligible = dict((entry['arena_id'], entry) for entry in entries)
+        self._posted_attempted.intersection_update(eligible)
+        for arena in list(self.attempted):
+            if arena not in eligible and arena not in self.in_flight:
+                self.attempted.pop(arena, None)
+        # Ready signals can arrive while another request is running. Preserve
+        # them BEFORE the serialization guard; coalesce duplicates and accept
+        # only a bounded set of recent, staged battles of the current account.
+        for arena in list(self._deferred):
+            if arena not in eligible:
+                self._deferred.pop(arena, None)
+        if posted and arena_id is not None:
+            matches = [arena for arena in eligible if str(arena) == str(arena_id)]
+            for arena in matches:
+                if (arena not in self._posted_attempted and
+                        arena not in self._deferred and self.max_deferred):
+                    if len(self._deferred) >= self.max_deferred:
+                        self._deferred.popitem(last=False)
+                        self.log('Result cache ready queue limit reached')
+                    self._deferred[arena] = True
+        if self._polling:
+            return 0
+        count = 0
+        self._polling = True
+        try:
+            # Expire every lost callback, including one outside this event's
+            # arena filter. A stale request must not hold the global queue.
+            for arena, started in list(self.in_flight.items()):
+                if now - started < 60:
                     continue
-                self.in_flight.pop(arena, None)  # lost callback, allow retry
+                self.in_flight.pop(arena, None)
                 self._request_tokens.pop(arena, None)
                 self.log('Result cache request timed out')
-            # The lobby service has just obtained the result. Permit one
-            # early retry on this explicit signal, not on every UI click.
-            early = posted and arena not in self._posted_attempted
-            if not early and now - self.attempted.get(arena, -1e100) < self.cooldown:
-                continue
-            try:
-                arena_uid = long_type(arena)
-            except (ValueError, TypeError, OverflowError):
-                continue
-            self.attempted[arena] = now
-            if posted:
-                self._posted_attempted.add(arena)
-            self.in_flight[arena] = now
-            token = object()
-            self._request_tokens[arena] = token
-            # A failed/unsupported API call still consumes this event's budget.
-            count += 1
-            self.log('Result cache request started')
-            try:
-                # Bind arena, account and attempt; callbacks may arrive late.
-                cache.get(arena_uid, lambda error, result, aid=arena,
-                          request=token, owner=account:
-                          self._callback(aid, error, result, request, owner))
-            except Exception:
-                if self._request_tokens.get(arena) is token:
-                    self.in_flight.pop(arena, None)
-                    self._request_tokens.pop(arena, None)
-                self.log('Result cache request unsupported / failed')
+            normal = [] if _deferred_only else entries
+            if arena_id is not None:
+                normal = [entry for entry in normal
+                          if str(entry['arena_id']) == str(arena_id)]
+            # Explicit ready signals take priority over speculative old work.
+            normal = sorted(reversed(normal), key=lambda entry:
+                            self.attempted.get(entry['arena_id'], -1e100))
+            order = list(self._deferred) + [entry['arena_id'] for entry in normal
+                                          if entry['arena_id'] not in self._deferred]
+            for arena in order:
+                if (count >= self.max_requests or not self.active or
+                        account != self._account_id):
+                    break
+                if self.account_provider is not None:
+                    try:
+                        if _verified_account(self.account_provider()) != account:
+                            self.reset_session()
+                            break
+                    except Exception:
+                        self.reset_session()
+                        break
+                if self.serialize and self.in_flight:
+                    break
+                if arena in self.in_flight:
+                    continue
+                early = arena in self._deferred and arena not in self._posted_attempted
+                if not early and now - self.attempted.get(arena, -1e100) < self.cooldown:
+                    continue
+                try:
+                    arena_uid = long_type(arena)
+                except (ValueError, TypeError, OverflowError):
+                    self._deferred.pop(arena, None)
+                    continue
+                self.attempted[arena] = now
+                if arena in self._deferred:
+                    self._deferred.pop(arena, None)
+                    self._posted_attempted.add(arena)
+                self.in_flight[arena] = now
+                token = object()
+                self._request_tokens[arena] = token
+                # A failed API call also consumes this event's finite budget.
+                count += 1
+                self.log('Result cache request started')
+                try:
+                    cache.get(arena_uid, lambda error, result, aid=arena,
+                              request=token, owner=account:
+                              self._callback(aid, error, result, request, owner))
+                except Exception:
+                    if self._request_tokens.get(arena) is token:
+                        self.in_flight.pop(arena, None)
+                        self._request_tokens.pop(arena, None)
+                    self.log('Result cache request unsupported / failed')
+        finally:
+            self._polling = False
         return count
+
+    def _drain_deferred(self):
+        if (self.active and self._deferred and not self._polling and
+                self._account_id is not None and self._cache is not None):
+            # Synchronous callbacks are handled by the enclosing poll loop.
+            # Asynchronous completion starts at most max_requests new requests;
+            # it never recursively retries an unavailable result forever.
+            try:
+                self.poll(self._cache, self._account_id, _deferred_only=True)
+            except Exception:
+                self.log('Result cache ready queue unavailable')
 
     def _callback(self, arena, error, result, token, account):
         if (not self.active or account != self._account_id or
@@ -162,3 +232,5 @@ class CacheRecovery(object):
         except Exception:
             # Recovery must never break game events or leak raw payloads.
             self.log('Cache result rejected')
+        finally:
+            self._drain_deferred()

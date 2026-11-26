@@ -13,6 +13,9 @@ settings.json
 *.csv
 /mods/
 /data/
+profiles/
+exports/
+*.json.bak
 .env
 .env.*
 /ui/node_modules/

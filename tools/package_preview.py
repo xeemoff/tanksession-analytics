@@ -21,8 +21,8 @@ def build_preview():
     ]
     package = 'src/res/scripts/client/gui/mods/tanksession_analytics/'
     paths.extend(package + name + '.py' for name in (
-        '__init__', 'analytics', 'coach', 'core', 'goals', 'presentation',
-        'recorder', 'storage'))
+        '__init__', 'analytics', 'coach', 'core', 'gameface', 'goals', 'insights',
+        'presentation', 'recorder', 'storage', 'workspace'))
     files = {path: (ROOT / path).read_bytes() for path in paths}
     files['PREVIEW_RU.txt'] = (
         'TankSession Analytics %s — просмотр интерфейса\n\n'
@@ -36,6 +36,8 @@ def build_preview():
         'Проверка загрузки игрового окна выполняется отдельно.\n\n'
         'Своя история: python tools/preview_ui.py --data "путь к battles.jsonl" '
         '--account "ID своего аккаунта"\n'
+        'Для сохранения целей, настроек и CSV в своей папке добавьте --allow-write.\n'
+        'Демонстрационные настройки временные и не меняют sample_data.\n'
         'Данные обрабатываются локально; сервер слушает только 127.0.0.1.\n'
         'Исходный код: https://github.com/xeemoff/tanksession-analytics\n'
     ) % version
