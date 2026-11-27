@@ -15,6 +15,7 @@ function fixture(selector = 'type:507'): Snapshot {
   value.history.forEach(row => { row.vehicle = selector; row.vehicle_label = label; });
   value.coach!.vehicle = selector;
   value.coach!.vehicle_label = label;
+  value.coach!.goal_suggestions?.forEach(goal => { goal.vehicle = selector; });
   value.goals.forEach(goal => { goal.vehicle = selector; goal.vehicle_label = label; });
   value.insights!.tanks.forEach(row => { row.label = selector; row.vehicle_label = label; });
   value.workspace!.preferences.vehicle = selector;

@@ -80,7 +80,21 @@ def fixtures():
                                  'vehicle': 'T-34', 'window': 10, 'page': 0},
         legacy_goals=[dict(identity_goals[0], vehicle='T-34')],
         source='demo', now=observed)
+    analytics_rows = rows + [dict(row, arena_id='report-previous-%d' % index,
+                                  timestamp=row['timestamp'] - 35 * 86400,
+                                  damage=max(0, row['damage'] - 150))
+                             for index, row in enumerate(rows)]
+    analytics_v2 = Workspace(str(ROOT / 'sample_data'), memory=True).snapshot(
+        analytics_rows, 'demo', {'protocol': 1, 'request_id': 'fixture',
+                                 'vehicle': '', 'window': 10, 'page': 0},
+        legacy_goals=goals, source='demo', now=observed)
+    coach_v2 = Workspace(str(ROOT / 'sample_data'), memory=True).snapshot(
+        analytics_rows, 'demo', {'protocol': 1, 'request_id': 'fixture',
+                                 'vehicle': 'IS-7', 'window': 10, 'page': 0},
+        legacy_goals=goals, source='demo', now=observed)
     return {
+        'analytics_v2.json': analytics_v2,
+        'coach_v2.json': coach_v2,
         'release.json': release,
         'identity_ready.json': identity_ready,
         'identity_ambiguous.json': identity_ambiguous,

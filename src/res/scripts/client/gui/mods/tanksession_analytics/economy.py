@@ -11,8 +11,12 @@ tuple indexes and premium/squad rounding. common/ValueReplay.py updates the
 raw credits accumulator with its bonus/penalty operations; do not add those
 components or deduct their penalties a second time.
 
-The new net value is scoped to one vehicle in a standard random result with
-an identity-verified avatar supplied by the caller. It counts actual credit
+templates/ranked_battles.py clones the regular personal block, replacing only
+the vehicle statistics at index 8; index 6 retains TotalMoneyDetailsBlock.
+The same verified pipeline therefore applies to bonus types 1, 22 and 24.
+
+The net value is scoped to one vehicle in a supported result with an
+identity-verified avatar supplied by the caller. It counts actual credit
 charges, not the replacement value of items taken from the depot, and excludes
 gold, bonds and future piggy-bank income. Missing values never imply zero.
 
@@ -25,7 +29,7 @@ import math
 MAX_INTEGER = (1 << 63) - 1
 MAX_EXACT_FLOAT_INTEGER = (1 << 53) - 1
 MAX_CREDIT_EVENTS = 1024
-RANDOM_BONUS_TYPES = (1, 24)
+SUPPORTED_BONUS_TYPES = (1, 22, 24)
 
 try:
     _integer_types = (int, long)
@@ -86,7 +90,7 @@ def _avatar_credit_events(avatar):
 
 def _net_credits(personal, avatar, single_vehicle, bonus_type):
     if (single_vehicle is not True or
-            _known_integer(bonus_type) not in RANDOM_BONUS_TYPES):
+            _known_integer(bonus_type) not in SUPPORTED_BONUS_TYPES):
         return None
     if 'rolloutsCount' in personal:
         rollouts = _known_integer(personal['rolloutsCount'])

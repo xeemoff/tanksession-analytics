@@ -76,13 +76,25 @@ jobs:
         with:
           name: tanksession-mtmod-candidate-${{ github.sha }}
           path: candidate
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tanksession-native-*-${{ github.sha }}
+          path: native-candidate
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: tanksession-hangar-preview-${{ github.sha }}
+          path: browser-preview
       - name: Inspect the tested package and enforce the publication gate
         env:
           RELEASE_TAG: ${{ needs.validate-tag.outputs.tag }}
         run: |
           python - <<'PY'
           import os
+          import hashlib
+          import json
           import sys
+          import zipfile
           from pathlib import Path
           sys.path.insert(0, 'tools')
           from build import project_metadata
@@ -95,6 +107,21 @@ jobs:
               env.write('RELEASE_CHANNEL=' + info['channel'] + '\n')
           print('Windows bundle SHA-256:', info['archive_sha256'])
           print('Native validation:', info['native_validation'])
+          companions = [Path('native-candidate') / ('TankSession_Analytics_' + version + '_Native_' + platform + '_x64.zip')
+                        for platform in ('Windows', 'Linux')]
+          preview = Path('browser-preview/dist') / ('TankSession_Analytics_' + version + '_Preview.zip')
+          for archive in companions + [preview]:
+              if not archive.is_file() or archive.is_symlink():
+                  raise SystemExit('Missing tested companion/preview: ' + archive.name)
+              digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+              if archive.with_suffix('.zip.sha256').read_text(encoding='ascii').strip() != digest + '  ' + archive.name:
+                  raise SystemExit('Candidate checksum mismatch: ' + archive.name)
+              if archive in companions:
+                  with zipfile.ZipFile(archive) as bundle:
+                      manifest = json.loads(bundle.read('manifest.json'))
+                      if manifest['version'] != version or manifest['source_commit'] != os.environ['GITHUB_SHA']:
+                          raise SystemExit('Companion version/commit mismatch')
+              print(archive.name, digest)
           PY
       - name: Publish the new release without replacing existing tags or assets
         env:
@@ -121,5 +148,7 @@ jobs:
           gh release create "$RELEASE_TAG" \
             candidate/*.mtmod candidate/*.mtmod.sha256 \
             dist/*_Windows.zip dist/*_Windows.zip.sha256 \
+            native-candidate/*_Native_*.zip native-candidate/*_Native_*.zip.sha256 \
+            browser-preview/dist/*_Preview.zip browser-preview/dist/*_Preview.zip.sha256 \
             --target "$GITHUB_SHA" --title "TankSession Analytics $RELEASE_VERSION" \
             --notes-file "docs/releases/v${RELEASE_VERSION}.md" "${flags[@]}"

@@ -72,6 +72,23 @@ function New-TankSessionBackupPath([string]$GameRoot, [string]$Kind) {
 }
 
 function Export-TankSessionHistory([string]$GameRoot, [string]$ArchivePath) {
+    # Public export shares the manager lock. Install/import call the internal
+    # writer only while already owning that lock, so snapshots cannot mix two
+    # manager transactions across journal/profile files.
+    Assert-TankSessionGameStopped
+    $null = Get-TankSessionDataRoot $GameRoot
+    $lockPath = Join-Path (Join-Path $GameRoot 'mods') '.tanksession-install.lock'
+    if (Test-Path -LiteralPath $lockPath) { Assert-TankSessionRegularPath $lockPath }
+    $lock = $null
+    try {
+        try { $lock = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
+        catch { throw 'Другая операция TankSession уже работает.' }
+        return Write-TankSessionHistorySnapshot $GameRoot $ArchivePath
+    } finally { if ($null -ne $lock) { $lock.Dispose() } }
+}
+
+function Write-TankSessionHistorySnapshot([string]$GameRoot, [string]$ArchivePath) {
+    # Internal operation: the caller owns .tanksession-install.lock.
     Assert-TankSessionGameStopped
     $root = Get-TankSessionDataRoot $GameRoot
     $files = @(Get-TankSessionDataFiles $root)
@@ -194,7 +211,7 @@ function Import-TankSessionHistory([string]$GameRoot, [string]$ArchivePath) {
         $existing = @(Get-TankSessionDataFiles $root)
         if ($existing.Count -gt 0) {
             $backup = (New-TankSessionBackupPath $GameRoot 'data') + '.zip'
-            $null = Export-TankSessionHistory $GameRoot $backup
+            $null = Write-TankSessionHistorySnapshot $GameRoot $backup
         }
         $before = @{}
         if ($backup) {
@@ -226,6 +243,11 @@ function Import-TankSessionHistory([string]$GameRoot, [string]$ArchivePath) {
                 [IO.File]::Move((Join-Path $stage $relative), $destination)
             }
             $applied += [PSCustomObject]@{ Destination = $destination; Previous = $previous }
+            # Replace saved the bytes actually displaced atomically. Verify
+            # those, not only the earlier pre-check; roll back a late writer.
+            if ($previous -and (Get-TankSessionHash $previous) -cne $before[$member.path]) {
+                throw 'История изменилась непосредственно при замене; восстановлены последние исходные данные.'
+            }
             if ((Get-TankSessionHash $destination) -cne $member.sha256) { throw 'Не совпала проверка установленной истории.' }
         }
         return [PSCustomObject]@{ Status = 'imported'; Files = @($manifest.files).Count; Backup = $backup }
@@ -250,7 +272,8 @@ function Import-TankSessionHistory([string]$GameRoot, [string]$ArchivePath) {
         }
         throw $original
     } finally {
-        if ($null -ne $stage -and (Test-Path -LiteralPath $stage)) { Remove-Item -LiteralPath $stage -Recurse -Force }
-        if ($null -ne $lock) { $lock.Dispose() }
+        try {
+            if ($null -ne $stage -and (Test-Path -LiteralPath $stage)) { Remove-Item -LiteralPath $stage -Recurse -Force }
+        } finally { if ($null -ne $lock) { $lock.Dispose() } }
     }
 }

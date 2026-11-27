@@ -171,6 +171,39 @@ class WindowsManagerTests(ReleaseFixture):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(archive.read_bytes(), b'existing')
 
+    def test_public_export_cannot_overlap_another_manager_transaction(self):
+        archive = self.root / 'history.zip'
+        lock = self.game / 'mods/.tanksession-install.lock'
+        result = self.ps("$held=[IO.File]::Open(%s,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None); "
+                         "try { Export-TankSessionHistory %s %s } finally { $held.Dispose() }" %
+                         (self.q(lock), self.q(self.game), self.q(archive)))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(archive.exists())
+
+    def test_atomic_displaced_file_check_preserves_a_late_writer(self):
+        before = self.history.read_bytes()
+        archive = self.root / 'valid.zip'
+        self.make_archive(archive, {'battles.jsonl': b'imported sentinel\n'})
+        body = ("$script:originalHash=${function:Get-TankSessionHash}; $script:changed=$false; "
+                "function Get-TankSessionHash([string]$Path) { "
+                "$hash=& $script:originalHash $Path; "
+                "if (-not $script:changed -and $Path.EndsWith('\\configs\\tanksession_analytics\\battles.jsonl')) { "
+                "[IO.File]::AppendAllText($Path, 'late-writer'); $script:changed=$true }; "
+                "return $hash }; Import-TankSessionHistory %s %s") % (self.q(self.game), self.q(archive))
+        result = self.ps(body)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.history.read_bytes(), before + b'late-writer', (result.stdout, result.stderr))
+
+    def test_cleanup_error_still_releases_exclusive_lock(self):
+        archive = self.root / 'valid.zip'
+        self.make_archive(archive, {'battles.jsonl': b'imported sentinel\n'})
+        lock = self.game / 'mods/.tanksession-install.lock'
+        result = self.good("function Remove-Item { param($LiteralPath,[switch]$Recurse,[switch]$Force) throw 'cleanup failure' }; "
+                           "try { $null=Import-TankSessionHistory %s %s } catch { }; "
+                           "$probe=[IO.File]::Open(%s,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None); "
+                           "$probe.Dispose(); Write-Output 'released'" % (self.q(self.game), self.q(archive), self.q(lock)))
+        self.assertEqual(result, 'released')
+
     def test_running_game_blocks_history_and_package_changes(self):
         for call in ('Set-TankSessionPackages %s %s %s' % (self.q(self.installer), self.q(self.game), self.q(self.client)),
                      'Export-TankSessionHistory %s %s' % (self.q(self.game), self.q(self.root / 'archive.zip'))):

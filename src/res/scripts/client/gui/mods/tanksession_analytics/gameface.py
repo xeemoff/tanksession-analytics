@@ -423,7 +423,7 @@ class GamefaceController(object):
             # replay the initialization command.
             selection = snapshot.get('selection')
             if isinstance(selection, dict):
-                for key in ('vehicle', 'window', 'page'):
+                for key in ('vehicle', 'window', 'page', 'history_query', 'history_sort'):
                     if key in selection:
                         request[key] = selection[key]
             payload = json.dumps(snapshot, ensure_ascii=True, allow_nan=False,

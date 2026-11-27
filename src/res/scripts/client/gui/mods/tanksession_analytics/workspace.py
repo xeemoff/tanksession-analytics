@@ -21,15 +21,18 @@ from .vehicles import resolve_selector, selector_resolver, selector_for
 MAX_PROFILE_BYTES = 65536
 MAX_EXPORT_ROWS = 100000
 MAX_PROFILES = 64
-TABS = ('progress', 'dynamics', 'history', 'summary', 'settings')
+TABS = ('progress', 'dynamics', 'history', 'summary', 'settings', 'analytics', 'reports')
+MODULES = ('metrics', 'coach', 'vehicle', 'chart', 'goals', 'activity', 'economy', 'reports')
 MUTATIONS = ('save_preferences', 'save_goal', 'delete_goal', 'export_csv')
 ACTIONS = ('initialize',) + MUTATIONS
 DEFAULT_PREFERENCES = {'vehicle': '', 'window': 10, 'tab': 'progress',
-                       'density': 'normal', 'contrast': 'standard'}
+                       'density': 'normal', 'contrast': 'standard',
+                       'theme': 'hangar', 'modules': ['metrics', 'coach'], 'motion': 'system'}
 EXPORT_FIELDS = ('timestamp', 'vehicle', 'vehicle_id', 'mode', 'map', 'outcome', 'damage', 'xp',
                  'xp_base', 'xp_bonus', 'kills', 'survived', 'shots', 'direct_hits',
                  'penetrations', 'assistance_radio', 'assistance_track',
-                 'credits_gross', 'credits_net')
+                 'credits_gross', 'credits_net', 'map_label', 'vehicle_tier',
+                 'vehicle_class', 'vehicle_nation')
 try:
     _text_types = (str, unicode)
 except NameError:
@@ -37,9 +40,12 @@ except NameError:
 
 
 def validate_preferences(value):
-    if not isinstance(value, dict) or set(value) != set(DEFAULT_PREFERENCES):
+    required = set(('vehicle', 'window', 'tab', 'density', 'contrast'))
+    if (not isinstance(value, dict) or not required.issubset(value) or
+            set(value).difference(DEFAULT_PREFERENCES)):
         raise ValueError('Unsupported preferences')
-    result = dict(value)
+    result = dict(DEFAULT_PREFERENCES)
+    result.update(value)
     vehicle = value['vehicle']
     if (not isinstance(vehicle, _text_types) or len(vehicle) > 128 or
             any(ord(char) < 32 for char in vehicle)):
@@ -52,6 +58,14 @@ def validate_preferences(value):
     if (value['tab'] not in TABS or value['density'] not in ('normal', 'compact')
             or value['contrast'] not in ('standard', 'high')):
         raise ValueError('Invalid preference choice')
+    if result['theme'] not in ('hangar', 'slate', 'light') or result['motion'] not in ('system', 'reduced'):
+        raise ValueError('Invalid display preference')
+    modules = result['modules']
+    if (not isinstance(modules, list) or len(modules) > len(MODULES) or
+            any(not isinstance(item, _text_types) or item not in MODULES for item in modules)
+            or len(set(modules)) != len(modules)):
+        raise ValueError('Invalid dashboard modules')
+    result['modules'] = list(modules)
     return result
 
 

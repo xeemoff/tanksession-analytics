@@ -19,7 +19,8 @@ from gui.mods.tanksession_analytics.storage import BattleStore, PendingJournal, 
 from gui.mods.tanksession_analytics.recorder import ResultRecorder, _verified_account
 from gui.mods.tanksession_analytics.recovery import CacheRecovery
 from gui.mods.tanksession_analytics.vehicles import (identity_from_internal_name,
-                                                   identity_from_type_descr)
+                                                   identity_from_type_descr,
+                                                   metadata_from_vehicle_type)
 
 _PREFIX = '[TankSession] '
 _store = None
@@ -125,11 +126,49 @@ def _context():
                     context['vehicle_id'] = (identity_from_type_descr(
                         getattr(vehicle_type, 'compactDescr', None)) or
                         identity_from_internal_name(context['vehicle_name']))
+                    metadata = metadata_from_vehicle_type(vehicle_type)
+                    if metadata.get('vehicle_id') == context.get('vehicle_id'):
+                        context.update(metadata)
             except Exception:
                 pass
     except Exception:
         _log('Player context is not accessible in this client state')
     return context
+
+
+def _result_metadata(record):
+    """Optional local catalog reads for the own result, never guessed tables.
+
+    ArenaType.g_cache is keyed by the full gameplay+geometry arena type ID.
+    Its name is already localized by the client. VehicleType is resolved by
+    its immutable type descriptor; no live hangar selection is consulted.
+    """
+    metadata = {}
+    identity = record.get('vehicle_id')
+    if identity and identity.startswith('type:'):
+        try:
+            from items import vehicles
+            values = metadata_from_vehicle_type(vehicles.getVehicleType(int(identity[5:])))
+            if values.get('vehicle_id') == identity:
+                metadata.update(values)
+        except Exception:
+            pass
+    map_id = record.get('map')
+    if map_id and map_id.startswith('arena:'):
+        try:
+            import ArenaType
+            arena_id = int(map_id[6:])
+            arena = ArenaType.g_cache.get(arena_id)
+            if arena is not None and getattr(arena, 'id', None) == arena_id:
+                label = getattr(arena, 'name', None)
+                if isinstance(label, bytes):
+                    label = label.decode('utf-8')
+                if (label and len(label) <= 128 and
+                        not any(ord(char) < 32 or ord(char) == 127 for char in label)):
+                    metadata['map_label'] = label
+        except Exception:
+            pass
+    return metadata
 
 
 def _arena_id_from_player():
@@ -535,7 +574,8 @@ def init():
         _store = BattleStore(path)
         stage = 'reading pending journal'
         _pending = PendingJournal(path + '.pending.jsonl')
-        _recorder = ResultRecorder(_store, _pending, require_account=True)
+        _recorder = ResultRecorder(_store, _pending, require_account=True,
+                                   metadata_provider=_result_metadata)
         stage = 'loading local settings'
         if _load_cache_opt_in():
             _recovery = CacheRecovery(_pending, _recorder, log=_log,

@@ -236,7 +236,7 @@ function Install-TankSessionBundle([string]$Directory, [string]$Path, [string]$V
         foreach ($old in $oldPackages) { Assert-TankSessionRegularPath $old.FullName }
         if (@(Get-TankSessionDataFiles (Get-TankSessionDataRoot $Path)).Count -gt 0) {
             $historyBackup = (New-TankSessionBackupPath $Path 'data') + '.zip'
-            $null = Export-TankSessionHistory $Path $historyBackup
+            $null = Write-TankSessionHistorySnapshot $Path $historyBackup
         }
         Copy-Item -LiteralPath (Join-Path $Directory $manifest.package) -Destination $temporary
         if ((Get-TankSessionHash $temporary) -cne $manifest.sha256.ToLowerInvariant()) { throw 'Ошибка проверки временной копии.' }

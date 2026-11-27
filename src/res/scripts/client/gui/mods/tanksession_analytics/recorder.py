@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """The game-event / cache-result seam, testable without running the client."""
-from .core import _arena_id, _as_text, _get_first, normalize_result, record_is_complete
+from .core import (_arena_id, _as_text, _get_first, normalize_result,
+                   record_is_complete, validate_record)
 
 
 def _verified_account(value):
@@ -11,11 +12,12 @@ def _verified_account(value):
 
 
 class ResultRecorder(object):
-    def __init__(self, store, pending=None, require_account=False):
+    def __init__(self, store, pending=None, require_account=False, metadata_provider=None):
         self.store = store
         self.pending = pending
         # Test/offline records may use 'local'; the live game adapter must not.
         self.require_account = require_account
+        self.metadata_provider = metadata_provider
 
     def receive(self, payload, current_context=None, observed_at=None,
                 expected_arena=None, confirmed_own=False):
@@ -49,6 +51,21 @@ class ResultRecorder(object):
         result = normalize_result(payload, context=context, observed_at=observed_at)
         if result is None:
             return 'skipped', None
+        if self.metadata_provider is not None:
+            # Catalog enrichment is optional and reads only the already
+            # identified own record. Its failure cannot discard a battle.
+            try:
+                additions = self.metadata_provider(dict(result))
+                if isinstance(additions, dict):
+                    enriched = dict(result)
+                    for name in ('map_label', 'vehicle_tier', 'vehicle_class', 'vehicle_nation'):
+                        if enriched.get(name) is None and additions.get(name) is not None:
+                            enriched[name] = additions[name]
+                    checked = validate_record(enriched)
+                    if checked is not None:
+                        result = checked
+            except Exception:
+                pass
         status = self.store.upsert(result)
         # Return what is actually persisted, including fields from an earlier
         # partial result. A legacy local-vs-known duplicate has no exact-account

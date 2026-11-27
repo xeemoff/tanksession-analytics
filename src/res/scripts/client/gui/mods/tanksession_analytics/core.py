@@ -10,7 +10,9 @@ from datetime import datetime
 
 from .economy import derive_economy
 from .vehicles import (coherent_identity, identity_from_internal_name,
-                       identity_from_type_descr, normalize_vehicle_id)
+                       identity_from_type_descr, normalize_vehicle_id,
+                       nation_for_identity, normalize_vehicle_metadata,
+                       VEHICLE_METADATA_FIELDS)
 
 try:
     _text_type = unicode
@@ -165,6 +167,11 @@ def _validate_record(record):
     clean['vehicle_id'] = normalize_vehicle_id(identity)
     if identity is not None and clean['vehicle_id'] is None:
         raise ValueError('Invalid vehicle_id')
+    metadata = normalize_vehicle_metadata(record, clean['vehicle_id'])
+    for name in VEHICLE_METADATA_FIELDS:
+        if record.get(name) is not None and metadata[name] is None:
+            raise ValueError('Invalid vehicle metadata: ' + name)
+        clean[name] = metadata[name]
     for name in ('timestamp', 'damage', 'assistance_radio', 'assistance_track', 'xp',
                  'kills', 'shots', 'direct_hits', 'penetrations', 'xp_base', 'xp_bonus',
                  'credits_gross'):
@@ -174,6 +181,9 @@ def _validate_record(record):
             raise ValueError('Invalid numeric field: ' + name)
         clean[name] = number
     clean['map'] = _record_text(record.get('map'), None, 128)
+    clean['map_label'] = _record_text(record.get('map_label'), None, 128)
+    if clean['map_label'] is not None and clean['map'] is None:
+        raise ValueError('A map label needs a map identity')
     value = record.get('credits_net')
     clean['credits_net'] = _signed_int(value)
     if value is not None and clean['credits_net'] is None:
@@ -326,7 +336,7 @@ def normalize_result(results, context=None, observed_at=None):
     if death_reason is not None and death_reason >= -1:
         survived = death_reason == -1
     # Avatar credit rewards belong to the whole account result. Include them
-    # only for an identity-confirmed, unambiguous single-vehicle random battle.
+    # only for an identity-confirmed single vehicle in a supported battle mode.
     personal_map = results['personal']
     avatar = personal_map.get('avatar')
     own_account = _non_negative_int(context.get('account_id'))
@@ -337,6 +347,11 @@ def normalize_result(results, context=None, observed_at=None):
     vehicle_entries = [item for key, item in personal_map.items() if key != 'avatar']
     single_vehicle = len(vehicle_entries) == 1 and vehicle_entries[0] is personal
     economics = derive_economy(personal, verified_avatar, single_vehicle, mode)
+    # Only a captured, identity-checked own type may contribute battle-start
+    # metadata. A current hangar vehicle must never label an older result.
+    metadata = normalize_vehicle_metadata(
+        context if captured_identity is not None else {}, vehicle_identity)
+    metadata['vehicle_nation'] = nation_for_identity(vehicle_identity)
     record = {
         'schema': 1,
         'arena_id': identifier,
@@ -361,6 +376,7 @@ def normalize_result(results, context=None, observed_at=None):
         'credits_gross': _non_negative_int(personal.get('credits')),
         'credits_net': economics['credits_net'],
     }
+    record.update(metadata)
     return validate_record(record)
 
 

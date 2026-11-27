@@ -99,6 +99,20 @@ class UiPreviewTests(unittest.TestCase):
                       'action=export_csv'):
             self.assertEqual(self.get('/api/snapshot?' + query)[0], 400)
 
+    def test_history_search_and_sort_use_the_same_scoped_service_as_native_ui(self):
+        status, _, body = self.get('/api/snapshot?request_id=history&history_query=T-34&history_sort=damage_desc&page=9')
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data['summary']['battles'], 2)
+        self.assertEqual(data['pagination']['total'], 1)
+        self.assertEqual(data['pagination']['page'], 0)
+        self.assertEqual(data['selection']['history_query'], 'T-34')
+        self.assertEqual(data['selection']['history_sort'], 'damage_desc')
+        self.assertEqual([row['vehicle'] for row in data['history']], ['T-34'])
+        for query in ('history_sort=unsupported', 'history_query=x&history_query=y',
+                      'history_query=' + 'x' * 65, 'history_query=x%0Ay'):
+            self.assertEqual(self.get('/api/snapshot?' + query)[0], 400)
+
     def test_snapshot_is_pinned_to_one_account(self):
         status, headers, body = self.get('/api/snapshot?request_id=test-1&window=10')
         self.assertEqual(status, 200)

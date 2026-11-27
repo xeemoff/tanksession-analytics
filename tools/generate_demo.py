@@ -8,6 +8,10 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 path = os.path.join(ROOT, 'sample_data', 'battles.jsonl')
 start = datetime(2026, 11, 8, 18, 30, tzinfo=timezone.utc)
 vehicles = ['Object 277'] * 10 + ['T-34-85'] * 7 + ['Leopard 1'] * 7 + ['IS-7'] * 24
+# Illustrative attributes belong only to this fictional demo. The live adapter
+# reads the client's own catalog; these are not a replacement vehicle/map table.
+metadata = {'Object 277': (10, 'heavyTank', 'ussr'), 'T-34-85': (6, 'mediumTank', 'ussr'),
+            'Leopard 1': (10, 'mediumTank', 'germany'), 'IS-7': (10, 'heavyTank', 'ussr')}
 with open(path, 'w', encoding='utf-8') as target:
     for index in range(48):
         stamp = start + timedelta(days=index // 5, minutes=30 * (index % 5))
@@ -36,6 +40,10 @@ with open(path, 'w', encoding='utf-8') as target:
             # Real collection requires the complete verified credit chain.
             'credits_net': -3000 + (index * 701) % 15000,
             'map': 'arena:%d' % (1 + index % 3),
+            'map_label': ['Учебная карта А', 'Учебная карта Б', 'Учебная карта В'][index % 3],
+            'vehicle_tier': None if index % 13 == 0 else metadata[vehicles[index]][0],
+            'vehicle_class': None if index % 13 == 0 else metadata[vehicles[index]][1],
+            'vehicle_nation': None if index % 13 == 0 else metadata[vehicles[index]][2],
         }
         target.write(json.dumps(record, ensure_ascii=False) + '\n')
 print('Wrote %d synthetic demo battles: %s' % (48, path))

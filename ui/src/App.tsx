@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createBridge } from './bridge';
-import { getMode, Goal, Mode, Selection, Snapshot, WindowSize, BattlePoint } from './contracts';
+import { getMode, Goal, GoalDefinition, DashboardModule, Mode, Selection, Snapshot, WindowSize, BattlePoint } from './contracts';
 import { SnapshotController, ViewState } from './controller';
 import { CoachCard } from './Coach';
 import { vehicleLabel } from './vehicleLabel';
@@ -10,9 +10,14 @@ import { VehiclePicker } from './VehiclePicker';
 import { SettingsView, OperationNotice } from './Workspace';
 import { SummaryView } from './SummaryExtras';
 import { BattleHistory } from './History';
+import { ActivityView, AnalyticsView, EconomyView, FeatureUnavailable } from './Analytics';
+import { ReportsView } from './Reports';
+import { VehicleCard, VehicleCollection } from './VehicleCards';
+import { moduleLabels } from './preferences';
 export { formatNumber } from './format';
 const SECTIONS: Array<{ id: PanelSection; label: string }> = [
-  { id: 'progress', label: 'Прогресс' }, { id: 'dynamics', label: 'Динамика и цели' }, { id: 'history', label: 'История боёв' }, { id: 'summary', label: 'Сводка' }, { id: 'settings', label: 'Настройки' }
+  { id: 'progress', label: 'Прогресс' }, { id: 'dynamics', label: 'Динамика и цели' }, { id: 'history', label: 'История боёв' }, { id: 'summary', label: 'Сводка' },
+  { id: 'analytics', label: 'Аналитика' }, { id: 'reports', label: 'Отчёты' }, { id: 'settings', label: 'Настройки' }
 ];
 const PAGE_SIZE = 5;
 
@@ -39,6 +44,7 @@ function Metric({ label, value, detail, emphasis = false, testId }: {
 }
 
 export function Trend({ series, windowSize }: { series: Snapshot['series']; windowSize: WindowSize }) {
+  const [selectedBattle, setSelectedBattle] = useState<number | null>(null);
   const known = series.filter(point => point.avg_damage !== null);
   if (known.length === 0) return <div className="chart-empty">
     <strong>{'График появится после ' + windowSize + ' боёв'}</strong>
@@ -60,18 +66,30 @@ export function Trend({ series, windowSize }: { series: Snapshot['series']; wind
   });
   if (current) paths.push(current);
   const lastIndex = series.reduce((last, point, index) => point.avg_damage === null ? last : index, 0);
+  const activeIndex = series.findIndex(point => point.battle === selectedBattle && point.avg_damage !== null);
+  const selectedIndex = activeIndex === -1 ? lastIndex : activeIndex;
+  const active = series[selectedIndex];
+  const description = (point: Snapshot['series'][number]) => 'Бой ' + point.battle + ' · средний урон ' + formatNumber(point.avg_damage, 1) + ' · известно ' + point.known_damage + '/' + windowSize;
   return <div className="chart-wrap" aria-label={'Скользящий средний урон, окно ' + windowSize + ' боёв'}>
     <div className="chart-range"><span>{formatNumber(max)}</span><span>СРЕДНИЙ УРОН</span></div>
-    <svg className="trend-svg" viewBox="0 0 600 150" preserveAspectRatio="none" role="img" aria-label="Динамика среднего урона">
+    <svg className="trend-svg" viewBox="0 0 600 150" preserveAspectRatio="none" role="group" aria-label="Динамика среднего урона">
       {[22, 79, 137].map(row => <path key={row} d={'M 0 ' + row + ' L 600 ' + row} stroke="#344139" strokeWidth="1" fill="none" />)}
       {paths.map((path, index) => <path key={index} d={path} stroke="#dfb875" strokeWidth="2.5" fill="none" />)}
-      {series.map((point, index) => point.avg_damage !== null && index !== lastIndex
-        && (index === 0 || series[index - 1].avg_damage === null)
-        && (index === series.length - 1 || series[index + 1].avg_damage === null)
-        ? <circle key={'isolated-' + index} cx={x(index)} cy={y(point.avg_damage)} r="3" fill="#dfb875" /> : null)}
-      <circle cx={x(lastIndex)} cy={y(series[lastIndex].avg_damage as number)} r="4" fill="#dfb875" />
+      {series.map((point, index) => point.avg_damage === null ? null : <circle key={point.battle} className="trend-point" data-trend-index={index}
+        cx={x(index)} cy={y(point.avg_damage)} r={index === selectedIndex ? 5 : 3} fill="#dfb875" role="button" tabIndex={index === selectedIndex ? 0 : -1}
+        aria-label={description(point)} aria-pressed={index === selectedIndex} onClick={() => setSelectedBattle(point.battle)} onFocus={() => setSelectedBattle(point.battle)}
+        onMouseEnter={() => setSelectedBattle(point.battle)} onKeyDown={event => {
+          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedBattle(point.battle); }
+          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+          event.preventDefault();
+          const indices = series.map((item, at) => item.avg_damage === null ? -1 : at).filter(at => at >= 0);
+          const position = indices.indexOf(index);
+          const next = indices[(position + (event.key === 'ArrowRight' ? 1 : indices.length - 1)) % indices.length];
+          event.currentTarget.ownerSVGElement?.querySelector<SVGElement>('[data-trend-index="' + next + '"]')?.focus();
+        }}><title>{description(point)}</title></circle>)}
     </svg>
     <div className="chart-axis"><span>{'Бой ' + series[0].battle}</span><span>{formatNumber(min) + ' — ' + formatNumber(max) + ' урона'}</span><span>{'Бой ' + series[series.length - 1].battle}</span></div>
+    <p className="trend-selection" aria-live="polite" data-testid="trend-detail">{description(active)}</p>
   </div>;
 }
 
@@ -87,7 +105,12 @@ export function DamageBars({ points }: { points: BattlePoint[] }) {
     <div className="chart-range"><span>{known ? formatNumber(Math.max(...points.map(point => point.damage || 0))) : '—'}</span><span>УРОН ЗА БОЙ</span></div>
     <div className="damage-bars" role="group" aria-label="Урон отдельных боёв">
       {points.map(point => <button key={point.battle} type="button" className={'damage-column damage-' + point.outcome + (active.battle === point.battle ? ' selected' : '')}
-        aria-label={description(point)} aria-pressed={active.battle === point.battle} onClick={() => setSelected(point.battle)}>
+        aria-label={description(point)} title={description(point)} aria-pressed={active.battle === point.battle} onClick={() => setSelected(point.battle)} onFocus={() => setSelected(point.battle)} onKeyDown={event => {
+          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+          event.preventDefault();
+          const buttons = Array.from(event.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>('button'));
+          buttons[(buttons.indexOf(event.currentTarget) + (event.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length]?.focus();
+        }}>
         <span className="damage-bar-area">
           {point.damage === null ? <span className="damage-unknown">—</span> :
             <span className="damage-bar" style={{ height: Math.max(2, Math.round(point.damage / max * 126)) + 'px' }} />}
@@ -209,25 +232,48 @@ function Comparison({ snapshot }: { snapshot: Snapshot }) {
 }
 
 
-export function SnapshotView({ snapshot, onSelectVehicle, onPage, section = 'all', busy = false }: { snapshot: Snapshot; onSelectVehicle?: (vehicle: string) => void; onPage?: (page: number) => void; section?: PanelSection | 'all'; busy?: boolean }) {
+function ProgressDashboard({ snapshot, onSelectVehicle, onSaveGoal, busy }: { snapshot: Snapshot; onSelectVehicle?: (vehicle: string) => void; onSaveGoal?: (goal: GoalDefinition) => void; busy: boolean }) {
+  const modules: DashboardModule[] = snapshot.workspace?.preferences.modules || ['metrics', 'coach'];
+  const panels: DashboardModule[] = modules.filter(item => item !== 'metrics');
+  const [active, setActive] = useState<DashboardModule>(panels[0] || 'metrics');
+  const current = panels.includes(active) ? active : panels[0];
+  const summary = snapshot.summary;
+  const vehicle = snapshot.vehicles.find(item => item.name === (snapshot.selection.vehicle || snapshot.coach?.vehicle));
+  return <section className="progress-dashboard" aria-label="Личная панель">
+    {modules.includes('metrics') && <div className="metrics-row">
+      <Metric label="БОЁВ В ВЫБОРКЕ" value={formatNumber(summary.battles)} detail="По выбранной технике" testId="battle-count" />
+      <Metric label="ПОБЕДЫ" value={summary.win_rate === null ? '—' : formatNumber(summary.win_rate, 1) + '%'} detail={summary.wins + ' побед · ' + summary.losses + ' пораж. · ' + summary.draws + ' ничьих'} testId="win-rate" />
+      <Metric label="СРЕДНИЙ УРОН" value={formatNumber(summary.avg_damage)} detail={'Известен в ' + summary.damage_samples + ' из ' + summary.battles + ' боёв'} emphasis testId="average-damage" />
+    </div>}
+    {panels.length > 1 && <div className="dashboard-module-tabs insight-switch" role="group" aria-label="Модули личной панели">{panels.map(item => <button key={item} type="button" aria-pressed={current === item} className={current === item ? 'active' : ''} onClick={() => setActive(item)}>{moduleLabels[item]}</button>)}</div>}
+    {current && <div className="dashboard-panel" key={current}>
+      {current === 'coach' ? snapshot.coach ? <CoachCard coach={snapshot.coach} latestVehicle={snapshot.history[0]?.vehicle} latestVehicleLabel={snapshot.history[0]?.vehicle_label} onSelectVehicle={onSelectVehicle} onSaveGoal={onSaveGoal} busy={busy} /> : <FeatureUnavailable name="Разбор прогресса" />
+        : current === 'vehicle' ? vehicle ? <VehicleCard vehicle={vehicle} selected /> : <VehicleCollection snapshot={snapshot} onSelect={onSelectVehicle} />
+          : current === 'chart' ? <DamagePanel snapshot={snapshot} />
+            : current === 'goals' ? <GoalCard goals={snapshot.goals} selected={snapshot.selection.vehicle} editable={!!snapshot.workspace?.can_edit} />
+              : current === 'activity' ? <ActivityView snapshot={snapshot} />
+                : current === 'economy' ? <EconomyView snapshot={snapshot} compact /> : <ReportsView snapshot={snapshot} compact />}
+    </div>}
+  </section>;
+}
+
+export function SnapshotView({ snapshot, onSelectVehicle, onPage, onHistoryFilter, onSaveGoal, section = 'all', busy = false }: {
+  snapshot: Snapshot; onSelectVehicle?: (vehicle: string) => void; onPage?: (page: number) => void; section?: PanelSection | 'all'; busy?: boolean;
+  onHistoryFilter?: (filter: Pick<Selection, 'history_query' | 'history_sort'>) => void; onSaveGoal?: (goal: GoalDefinition) => void;
+}) {
   if (snapshot.status === 'account_unavailable') return <div className="empty-state" role="status"><span className="large-symbol">◎</span><h2>Аккаунт ещё не определён</h2><p>Данные появятся после входа в ангар. История других аккаунтов здесь не отображается.</p></div>;
   if (snapshot.status === 'empty') return <div className="empty-state" role="status"><span className="large-symbol">＋</span><h2>В этой выборке ещё нет боёв</h2><p>Завершите бой или выберите другую технику. История обновляется по полученным результатам.</p></div>;
-  const summary = snapshot.summary;
   const quality = snapshot.quality;
   return <>
-    {(section === 'all' || section === 'progress') && <><div className="metrics-row">
-      <Metric label="БОЁВ В ВЫБОРКЕ" value={formatNumber(summary.battles)} detail="По выбранной технике" testId="battle-count" />
-      <Metric label="ПОБЕДЫ" value={summary.win_rate === null ? '—' : formatNumber(summary.win_rate, 1) + '%'}
-        detail={summary.wins + ' побед · ' + summary.losses + ' пораж. · ' + summary.draws + ' ничьих'} testId="win-rate" />
-      <Metric label="СРЕДНИЙ УРОН" value={formatNumber(summary.avg_damage)} detail={'Известен в ' + summary.damage_samples + ' из ' + summary.battles + ' боёв'} emphasis testId="average-damage" />
-    </div>
-    {snapshot.coach && <CoachCard coach={snapshot.coach} latestVehicle={snapshot.history[0]?.vehicle} latestVehicleLabel={snapshot.history[0]?.vehicle_label} onSelectVehicle={onSelectVehicle} />}</>}
+    {(section === 'all' || section === 'progress') && <ProgressDashboard snapshot={snapshot} onSelectVehicle={onSelectVehicle} onSaveGoal={onSaveGoal} busy={busy} />}
     {(section === 'all' || section === 'dynamics') && <div className="analysis-row">
       <DamagePanel snapshot={snapshot} />
       <GoalCard goals={snapshot.goals} selected={snapshot.selection.vehicle} editable={!!snapshot.workspace?.can_edit} />
     </div>}
     {section === 'summary' && <SummaryView snapshot={snapshot}><InsightsView snapshot={snapshot} /></SummaryView>}
-    {(section === 'all' || section === 'history') && <><BattleHistory snapshot={snapshot} onPage={onPage} busy={busy} />
+    {section === 'analytics' && <AnalyticsView snapshot={snapshot} onSelectVehicle={onSelectVehicle} />}
+    {section === 'reports' && <ReportsView snapshot={snapshot} />}
+    {(section === 'all' || section === 'history') && <><BattleHistory snapshot={snapshot} onPage={onPage} onFilter={onHistoryFilter} busy={busy} />
     <div className="quality-line"><span className="quality-icon">◈</span><span>
       {quality.incomplete_records === 0 ? 'Основные показатели всех боёв известны.' : 'Неполных результатов: ' + quality.incomplete_records + '. Пропуски не считаются нулём.'}
       {quality.invalid_records > 0 ? ' Отклонённых записей: ' + quality.invalid_records + '.' : ''}
@@ -270,7 +316,8 @@ export default function App() {
   if (state.phase === 'closed') return <main className="page"><div className="closed-panel"><span className="brand-mark">TS</span><h1>Панель закрыта</h1>
     {mode !== 'gameface' && <button className="primary-button" type="button" onClick={() => { vehicles.current = []; setGeneration(generation + 1); }}>Открыть снова</button>}</div></main>;
   const preferences = state.snapshot?.workspace?.preferences;
-  return <main className="page"><div className={'panel' + (preferences?.density === 'compact' ? ' density-compact' : '') + (preferences?.contrast === 'high' ? ' contrast-high' : '')} aria-busy={busy}>
+  const theme = preferences?.theme || 'hangar';
+  return <main className={'page theme-' + theme}><div className={'panel theme-' + theme + (preferences?.density === 'compact' ? ' density-compact' : '') + (preferences?.contrast === 'high' ? ' contrast-high' : '') + (preferences?.motion === 'reduced' ? ' motion-reduced' : '')} aria-busy={busy}>
     <header className="panel-header"><div className="brand"><span className="brand-mark">TS</span><div><h1>TankSession<span className="brand-sub">ANALYTICS</span></h1><p>История боёв и личный прогресс</p></div></div>
       <div className="header-actions"><SourceBadge mode={mode} /><button type="button" className="icon-button refresh" aria-label="Обновить статистику" disabled={inactive || busy} onClick={() => control.current?.request()}>Обновить</button>
         <button type="button" className="icon-button close" aria-label="Закрыть панель" onClick={() => control.current?.close()}>×</button></div></header>
@@ -286,8 +333,12 @@ export default function App() {
         }}>{item.label}</button>)}
       </div>
       {state.snapshot && (state.phase === 'ready' || state.phase === 'loading') ? <><PendingNotice snapshot={state.snapshot} />
-        {section === 'settings' ? <><OperationNotice snapshot={state.snapshot} /><SettingsView snapshot={state.snapshot} busy={busy} onCommand={command => control.current?.command(command)} /></> :
-          <SnapshotView snapshot={state.snapshot} section={section} busy={busy} onPage={page => control.current?.request({ ...state.selection, page })} onSelectVehicle={vehicle => choose({ ...state.selection, vehicle })} />}
+        <OperationNotice snapshot={state.snapshot} />
+        <div className="screen-content" key={section}>{section === 'settings' ? <SettingsView snapshot={state.snapshot} busy={busy} onCommand={command => control.current?.command(command)} /> :
+          <SnapshotView snapshot={state.snapshot} section={section} busy={busy} onPage={page => control.current?.request({ ...state.selection, page })}
+            onHistoryFilter={filter => control.current?.request({ ...state.selection, ...filter, page: 0 })}
+            onSaveGoal={state.snapshot.workspace?.can_edit ? goal => control.current?.command({ action: 'save_goal', goal }) : undefined}
+            onSelectVehicle={vehicle => choose({ ...state.selection, vehicle })} />}</div>
         {busy && <p className="command-progress" role="status">Сохраняем изменения…</p>}
       </> : state.phase === 'error' ? <div className="empty-state error-state" role="alert">
         <span className="large-symbol">!</span><h2>Данные сейчас недоступны</h2><p>{state.message}</p><button className="primary-button" type="button" onClick={() => setGeneration(generation + 1)}>Повторить подключение</button>

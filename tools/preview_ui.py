@@ -167,7 +167,8 @@ def create_ui_server(data_path, account_id, goals=None, demo=False,
                 self.json_response(404, {'error': 'not_found'})
                 return
             try:
-                if set(params).difference(('window', 'vehicle', 'request_id', 'page')):
+                if set(params).difference(('window', 'vehicle', 'request_id', 'page',
+                                           'history_query', 'history_sort')):
                     raise ValueError('Unsupported query field')
                 if any(len(values) != 1 for values in params.values()):
                     raise ValueError('Duplicate query field')
@@ -185,6 +186,9 @@ def create_ui_server(data_path, account_id, goals=None, demo=False,
                     if not page.isascii() or not page.isdigit() or len(page) > 7:
                         raise ValueError('Invalid page')
                     request['page'] = int(page)
+                for name in ('history_query', 'history_sort'):
+                    if name in params:
+                        request[name] = params[name][0]
                 request = validate_request(request)
             except ValueError:
                 self.json_response(400, {'error': 'invalid_request'})

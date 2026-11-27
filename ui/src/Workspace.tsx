@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { GoalDefinition, PanelSection, Preferences, Snapshot, UserCommand } from './contracts';
+import { dashboardModules, DashboardModule, GoalDefinition, PanelSection, Preferences, Snapshot, Theme, UserCommand } from './contracts';
 import { formatNumber } from './format';
 import { VehiclePicker } from './VehiclePicker';
 import { vehicleLabel, vehicleLabelFor } from './vehicleLabel';
+import { moduleLabels, sectionLabels, themeLabels } from './preferences';
 
-const sectionLabels: Record<PanelSection, string> = { progress: 'Прогресс', dynamics: 'Динамика и цели', history: 'История боёв', summary: 'Сводка', settings: 'Настройки' };
 const operationLabels: Record<string, string> = {
   preferences_saved: 'Вид и фильтры сохранены для текущего аккаунта.',
   goal_saved: 'Цель сохранена.', goal_deleted: 'Цель удалена.',
@@ -30,9 +30,28 @@ function AppearanceForm({ snapshot, busy, onCommand }: { snapshot: Snapshot; bus
   const [density, setDensity] = useState<Preferences['density']>(initial.density);
   const [contrast, setContrast] = useState<Preferences['contrast']>(initial.contrast);
   const [tab, setTab] = useState<PanelSection>(initial.tab);
+  const [page, setPage] = useState<'layout' | 'theme' | 'modules'>('layout');
+  const [theme, setTheme] = useState<Theme>(initial.theme || 'hangar');
+  const [motion, setMotion] = useState<'system' | 'reduced'>(initial.motion || 'system');
+  const [modules, setModules] = useState<DashboardModule[]>(initial.modules || ['metrics', 'coach']);
+  const advanced = 'theme' in initial || !!snapshot.analytics;
+  const toggle = (key: DashboardModule) => setModules(current => current.includes(key) ? current.filter(item => item !== key)
+    : key === 'metrics' ? [key, ...current] : [...current, key]);
+  const move = (key: DashboardModule, step: number) => {
+    const panels: DashboardModule[] = modules.filter(item => item !== 'metrics');
+    const index = panels.indexOf(key);
+    const next = index + step;
+    if (index < 0 || next < 0 || next >= panels.length) return;
+    [panels[index], panels[next]] = [panels[next], panels[index]];
+    setModules(modules.includes('metrics') ? ['metrics', ...panels] : panels);
+  };
+  const orderedModules = [...modules, ...dashboardModules.filter(key => !modules.includes(key))];
   return <div className="settings-card">
     <div className="section-heading"><h2>Вид и стартовые фильтры</h2><span className="subtle-tag">ТЕКУЩИЙ АККАУНТ</span></div>
-    <div className="settings-two-column">
+    {advanced && <div className="insight-switch appearance-pages" role="group" aria-label="Настройка вида">
+      {([['layout', 'Вид и фильтры'], ['theme', 'Темы и движение'], ['modules', 'Модули панели']] as const).map(([key, label]) => <button type="button" key={key} className={page === key ? 'active' : ''} aria-pressed={page === key} onClick={() => setPage(key)}>{label}</button>)}
+    </div>}
+    {page === 'layout' ? <><div className="settings-two-column">
       <div className="settings-field"><span className="field-label">ПЛОТНОСТЬ</span><div className="insight-switch">
         <button type="button" className={density === 'normal' ? 'active' : ''} aria-pressed={density === 'normal'} disabled={busy} onClick={() => setDensity('normal')}>Обычная</button>
         <button type="button" className={density === 'compact' ? 'active' : ''} aria-pressed={density === 'compact'} disabled={busy} onClick={() => setDensity('compact')}>Компактная</button>
@@ -44,11 +63,22 @@ function AppearanceForm({ snapshot, busy, onCommand }: { snapshot: Snapshot; bus
     </div>
     <span className="field-label">РАЗДЕЛ ПРИ ОТКРЫТИИ</span>
     <div className="insight-switch startup-tabs" role="group" aria-label="Стартовый раздел">
-      {(Object.keys(sectionLabels) as PanelSection[]).map(key => <button type="button" key={key} disabled={busy} className={key === tab ? 'active' : ''} aria-pressed={key === tab} onClick={() => setTab(key)}>{sectionLabels[key]}</button>)}
+      {(Object.keys(sectionLabels) as PanelSection[]).filter(key => advanced || (key !== 'analytics' && key !== 'reports')).map(key => <button type="button" key={key} disabled={busy} className={key === tab ? 'active' : ''} aria-pressed={key === tab} onClick={() => setTab(key)}>{sectionLabels[key]}</button>)}
     </div>
-    <p className="settings-description">{'Будут сохранены фильтры сверху: ' + (snapshot.selection.vehicle ? vehicleLabelFor(snapshot.selection.vehicle, snapshot.vehicles) : 'вся техника') + ', окно ' + snapshot.selection.window + ' боёв.'}</p>
+    <p className="settings-description">{'Будут сохранены фильтры сверху: ' + (snapshot.selection.vehicle ? vehicleLabelFor(snapshot.selection.vehicle, snapshot.vehicles) : 'вся техника') + ', окно ' + snapshot.selection.window + ' боёв.'}</p></>
+      : page === 'theme' ? <><div className="theme-options" role="group" aria-label="Цветовая тема">{(Object.keys(themeLabels) as Theme[]).map(key => <button type="button" key={key} disabled={busy} className={'theme-choice theme-choice-' + key + (theme === key ? ' selected' : '')} aria-pressed={theme === key} onClick={() => setTheme(key)}><span className="theme-swatches" aria-hidden="true"><span /><span /><span /></span><strong>{themeLabels[key]}</strong><span>{key === 'hangar' ? 'Оливковая и тёплая' : key === 'slate' ? 'Холодная и нейтральная' : 'Светлая с тёмным текстом'}</span></button>)}</div>
+        <span className="field-label motion-label">ДВИЖЕНИЕ</span><div className="insight-switch" role="group" aria-label="Анимация интерфейса"><button type="button" disabled={busy} className={motion === 'system' ? 'active' : ''} aria-pressed={motion === 'system'} onClick={() => setMotion('system')}>Как в системе</button><button type="button" disabled={busy} className={motion === 'reduced' ? 'active' : ''} aria-pressed={motion === 'reduced'} onClick={() => setMotion('reduced')}>Уменьшить движение</button></div><p className="settings-description">Системное ограничение движения учитывается всегда. Повышенный контраст доступен во вкладке «Вид и фильтры».</p></>
+        : <><p className="settings-description">Выберите содержимое «Прогресса». Основные показатели закреплены сверху, остальные модули открываются переключателями в заданном порядке.</p>
+          <div className="module-settings" role="group" aria-label="Состав личной панели">{orderedModules.map(key => {
+            const enabled = modules.includes(key);
+            const panels: DashboardModule[] = modules.filter(item => item !== 'metrics');
+            const index = panels.indexOf(key);
+            return <div className={'module-setting' + (enabled ? ' enabled' : '')} key={key}><button type="button" className="module-toggle" aria-pressed={enabled} aria-label={'Модуль ' + moduleLabels[key]} disabled={busy || (enabled && modules.length === 1)} onClick={() => toggle(key)}><span aria-hidden="true">{enabled ? '✓' : '+'}</span><strong>{moduleLabels[key]}</strong><small>{enabled ? 'Включён' : 'Выключен'}</small></button>
+              {key !== 'metrics' && enabled && <div className="module-order"><button type="button" disabled={busy || index === 0} aria-label={'Выше: ' + moduleLabels[key]} onClick={() => move(key, -1)}>↑</button><button type="button" disabled={busy || index === panels.length - 1} aria-label={'Ниже: ' + moduleLabels[key]} onClick={() => move(key, 1)}>↓</button></div>}</div>;
+          })}</div><p className="chart-footnote">Оставьте хотя бы один модуль. Остальные разделы статистики доступны независимо от этой настройки.</p></>}
     <button type="button" className="primary-button" disabled={busy} onClick={() => onCommand({ action: 'save_preferences', preferences: {
-      vehicle: snapshot.selection.vehicle, window: snapshot.selection.window, tab, density, contrast
+      vehicle: snapshot.selection.vehicle, window: snapshot.selection.window, tab, density, contrast,
+      ...(advanced ? { theme, motion, modules } : {})
     } })}>Сохранить вид и фильтры</button>
     <p className="trend-note">Настройки применяются после сохранения и восстанавливаются при следующем открытии окна. Для другого аккаунта используется отдельный профиль.</p>
   </div>;

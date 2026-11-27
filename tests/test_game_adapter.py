@@ -152,6 +152,37 @@ class GameAdapterTests(unittest.TestCase):
         self.assertEqual(self.game._store.records, [])
         self.assertEqual(self.game._pending.context(1234)['vehicle_id'], 'type:257')
 
+    def test_verified_metadata_survives_hangar_and_map_uses_full_arena_type(self):
+        vehicle_type = types.SimpleNamespace(compactDescr=257, id=(0, 1), level=6,
+                                             classTag='mediumTank', tags=frozenset(['mediumTank']))
+        sys.modules['BigWorld'].entities[42].typeDescriptor = types.SimpleNamespace(
+            name='ussr:R04_T-34', type=vehicle_type)
+        arenas = types.ModuleType('ArenaType')
+        arenas.g_cache = {65547: types.SimpleNamespace(id=65547, name=u'Проверяемая карта'),
+                          11: types.SimpleNamespace(id=11, name=u'Другая геометрия')}
+        items = types.ModuleType('items')
+        items.vehicles = types.SimpleNamespace(getVehicleType=lambda value: vehicle_type)
+        sys.modules.update({'ArenaType': arenas, 'items': items})
+        self.game.init()
+        self.events.onAccountBecomePlayer.fire()
+        self.events.onAvatarReady.fire()
+        captured = self.game._pending.context(1234)
+        self.assertEqual((captured['vehicle_tier'], captured['vehicle_class'], captured['vehicle_nation']),
+                         (6, 'mediumTank', 'ussr'))
+        self.player.playerVehicleID = None
+        self.player.arenaUniqueID = None
+        sys.modules['BigWorld'].entities.clear()
+        vehicle_type.level = 7  # A later catalog must not replace the captured tier.
+        self.events.onBattleResultsReceived.fire(True, {
+            'arenaUniqueID': 1234, 'common': {'winnerTeam': 1, 'arenaTypeID': 65547},
+            'personal': {42: {'typeCompDescr': 257, 'team': 1, 'damageDealt': 1111, 'xp': 400}}})
+        record = self.game._store.records[0]
+        self.assertEqual(record['map'], 'arena:65547')
+        self.assertEqual(record['map_label'], u'Проверяемая карта')
+        self.assertEqual(record['vehicle_tier'], 6)
+        self.assertEqual(record['vehicle_class'], 'mediumTank')
+        self.assertEqual(record['vehicle_nation'], 'ussr')
+
 
 
     def test_hangar_identity_is_retained_for_battle_avatar(self):

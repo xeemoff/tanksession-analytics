@@ -21,6 +21,8 @@ except NameError:
 
 NATIONS = ('ussr', 'germany', 'usa', 'china', 'france', 'uk', 'japan',
            'czech', 'sweden', 'poland', 'italy', 'intunion')
+VEHICLE_CLASSES = ('lightTank', 'mediumTank', 'heavyTank', 'AT-SPG', 'SPG')
+VEHICLE_METADATA_FIELDS = ('vehicle_tier', 'vehicle_class', 'vehicle_nation')
 _NATION_IDS = dict((name, index) for index, name in enumerate(NATIONS))
 _DECIMAL = re.compile(r'^[0-9]+\Z')
 _INTERNAL_NAME = re.compile(
@@ -84,6 +86,69 @@ def normalize_vehicle_id(value):
     if value.startswith('name:'):
         return identity_from_internal_name(value[5:])
     return None
+
+
+def nation_for_identity(value):
+    """Decode the verified type/name namespace, without guessing from a label."""
+    identity = normalize_vehicle_id(value)
+    if identity is None:
+        return None
+    if identity.startswith('type:'):
+        return NATIONS[(int(identity[5:]) >> 4) & 15]
+    return identity[5:].split(':', 1)[0]
+
+
+def normalize_vehicle_metadata(value, identity=None):
+    """Bound optional observed metadata; unsupported values remain unknown.
+
+    Reference 1.46 constants define levels 1..11 and the five class tags.
+    This helper does not reconstruct a past tier/class from a current label.
+    """
+    value = value if isinstance(value, dict) else {}
+    tier = value.get('vehicle_tier')
+    if isinstance(tier, bool) or not isinstance(tier, integer_types) or not 1 <= tier <= 11:
+        tier = None
+    vehicle_class = _text(value.get('vehicle_class'))
+    if vehicle_class not in VEHICLE_CLASSES:
+        vehicle_class = None
+    nation = _text(value.get('vehicle_nation'))
+    expected = nation_for_identity(identity)
+    if nation not in NATIONS or (expected is not None and nation != expected):
+        nation = None
+    return {'vehicle_tier': tier, 'vehicle_class': vehicle_class, 'vehicle_nation': nation}
+
+
+def metadata_from_vehicle_type(vehicle_type):
+    """Read only the client's verified VehicleType fields, never entity IDs.
+
+    Source: pinned 1.46 items/vehicles.py VehicleType.__init__ and constants.py.
+    The compact descriptor is the authority for the nation namespace; when an
+    id tuple is exposed it must agree. A malformed type contributes no data.
+    """
+    identity = identity_from_type_descr(getattr(vehicle_type, 'compactDescr', None))
+    if identity is None:
+        return {}
+    number = int(identity[5:])
+    ids = getattr(vehicle_type, 'id', None)
+    if ids is not None and (not isinstance(ids, (tuple, list)) or len(ids) != 2 or
+            any(isinstance(value, bool) or not isinstance(value, integer_types) for value in ids)
+            or tuple(ids) != ((number >> 4) & 15, (number >> 8) & 65535)):
+        return {}
+    vehicle_class = getattr(vehicle_type, 'classTag', None)
+    tags = getattr(vehicle_type, 'tags', None)
+    if isinstance(tags, (tuple, list, set, frozenset)) and len(tags) <= 256:
+        classes = [name for name in VEHICLE_CLASSES if name in tags]
+        if len(classes) != 1 or (vehicle_class is not None and vehicle_class != classes[0]):
+            vehicle_class = None
+        elif vehicle_class is None:
+            vehicle_class = classes[0]
+    values = normalize_vehicle_metadata({
+        'vehicle_tier': getattr(vehicle_type, 'level', None),
+        'vehicle_class': vehicle_class,
+        'vehicle_nation': nation_for_identity(identity),
+    }, identity)
+    values['vehicle_id'] = identity
+    return values
 
 
 def _account(value):

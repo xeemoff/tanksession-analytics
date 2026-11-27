@@ -49,7 +49,8 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(result['workspace']['operation']['code'], 'preferences_saved')
         self.workspace = Workspace(self.folder)
         restored = self.snapshot(command('initialize'))
-        self.assertEqual(restored['selection'], {'vehicle': 'Tank', 'window': 30, 'page': 0})
+        self.assertEqual(restored['selection'], {'vehicle': 'Tank', 'window': 30, 'page': 0,
+                                                'history_query': '', 'history_sort': 'time_desc'})
         self.assertEqual(restored['workspace']['preferences'], preferences)
         other = self.snapshot(command('initialize'), account='B')
         self.assertEqual(other['workspace']['preferences'], DEFAULT_PREFERENCES)

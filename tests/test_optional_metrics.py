@@ -108,6 +108,23 @@ class OptionalMetricTests(unittest.TestCase):
                                   observed_at=1700000000)
         self.assertIsNone(result['credits_net'])
 
+    def test_ranked_net_requires_own_avatar_and_keeps_unknown_for_other_modes(self):
+        from test_economy import complete_personal, complete_avatar
+        personal = dict(complete_personal(), damageDealt=83, team=1)
+        avatar = complete_avatar()
+        payload = {'arenaUniqueID': 1234, 'common': {'winnerTeam': 1, 'bonusType': 22},
+                   'personal': {42: personal, 'avatar': avatar}}
+        context = {'account_id': '88', 'player_vehicle_id': 42}
+        result = normalize_result(payload, context, observed_at=1700000000)
+        self.assertEqual((result['mode'], result['credits_net']), ('22', 14328))
+        avatar['accountDBID'] = 99
+        self.assertIsNone(normalize_result(payload, context)['credits_net'])
+        avatar['accountDBID'] = 88
+        payload['common']['bonusType'] = 27
+        result = normalize_result(payload, context)
+        self.assertIsNone(result['credits_net'])
+        self.assertEqual(result['credits_gross'], 20000)
+
     def test_no_received_xp_cannot_invent_bonus_from_the_legacy_base_xp_fallback(self):
         result = self.normalize({'xp': None, 'baseXP': 600,
                                  'originalXP': 700, 'achievementXP': 100})
