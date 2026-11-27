@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { useState } from 'react';
 import { dashboardModules, DashboardModule, GoalDefinition, PanelSection, Preferences, Snapshot, Theme, UserCommand } from './contracts';
 import { formatNumber } from './format';
@@ -49,37 +50,37 @@ function AppearanceForm({ snapshot, busy, onCommand }: { snapshot: Snapshot; bus
   return <div className="settings-card">
     <div className="section-heading"><h2>Вид и стартовые фильтры</h2><span className="subtle-tag">ТЕКУЩИЙ АККАУНТ</span></div>
     {advanced && <div className="insight-switch appearance-pages" role="group" aria-label="Настройка вида">
-      {([['layout', 'Вид и фильтры'], ['theme', 'Темы и движение'], ['modules', 'Модули панели']] as const).map(([key, label]) => <button type="button" key={key} className={page === key ? 'active' : ''} aria-pressed={page === key} onClick={() => setPage(key)}>{label}</button>)}
+      {([['layout', 'Вид и фильтры'], ['theme', 'Темы и движение'], ['modules', 'Модули панели']] as const).map(([key, label]) => <Button type="button" key={key} className={page === key ? 'active' : ''} aria-pressed={page === key} onClick={() => setPage(key)}>{label}</Button>)}
     </div>}
     {page === 'layout' ? <><div className="settings-two-column">
       <div className="settings-field"><span className="field-label">ПЛОТНОСТЬ</span><div className="insight-switch">
-        <button type="button" className={density === 'normal' ? 'active' : ''} aria-pressed={density === 'normal'} disabled={busy} onClick={() => setDensity('normal')}>Обычная</button>
-        <button type="button" className={density === 'compact' ? 'active' : ''} aria-pressed={density === 'compact'} disabled={busy} onClick={() => setDensity('compact')}>Компактная</button>
+        <Button type="button" className={density === 'normal' ? 'active' : ''} aria-pressed={density === 'normal'} disabled={busy} onClick={() => setDensity('normal')}>Обычная</Button>
+        <Button type="button" className={density === 'compact' ? 'active' : ''} aria-pressed={density === 'compact'} disabled={busy} onClick={() => setDensity('compact')}>Компактная</Button>
       </div></div>
       <div className="settings-field"><span className="field-label">КОНТРАСТ</span><div className="insight-switch">
-        <button type="button" className={contrast === 'standard' ? 'active' : ''} aria-pressed={contrast === 'standard'} disabled={busy} onClick={() => setContrast('standard')}>Стандартный</button>
-        <button type="button" className={contrast === 'high' ? 'active' : ''} aria-pressed={contrast === 'high'} disabled={busy} onClick={() => setContrast('high')}>Повышенный</button>
+        <Button type="button" className={contrast === 'standard' ? 'active' : ''} aria-pressed={contrast === 'standard'} disabled={busy} onClick={() => setContrast('standard')}>Стандартный</Button>
+        <Button type="button" className={contrast === 'high' ? 'active' : ''} aria-pressed={contrast === 'high'} disabled={busy} onClick={() => setContrast('high')}>Повышенный</Button>
       </div></div>
     </div>
     <span className="field-label">РАЗДЕЛ ПРИ ОТКРЫТИИ</span>
     <div className="insight-switch startup-tabs" role="group" aria-label="Стартовый раздел">
-      {(Object.keys(sectionLabels) as PanelSection[]).filter(key => advanced || (key !== 'analytics' && key !== 'reports')).map(key => <button type="button" key={key} disabled={busy} className={key === tab ? 'active' : ''} aria-pressed={key === tab} onClick={() => setTab(key)}>{sectionLabels[key]}</button>)}
+      {(Object.keys(sectionLabels) as PanelSection[]).filter(key => advanced || (key !== 'analytics' && key !== 'reports')).map(key => <Button type="button" key={key} disabled={busy} className={key === tab ? 'active' : ''} aria-pressed={key === tab} onClick={() => setTab(key)}>{sectionLabels[key]}</Button>)}
     </div>
     <p className="settings-description">{'Будут сохранены фильтры сверху: ' + (snapshot.selection.vehicle ? vehicleLabelFor(snapshot.selection.vehicle, snapshot.vehicles) : 'вся техника') + ', окно ' + snapshot.selection.window + ' боёв.'}</p></>
-      : page === 'theme' ? <><div className="theme-options" role="group" aria-label="Цветовая тема">{(Object.keys(themeLabels) as Theme[]).map(key => <button type="button" key={key} disabled={busy} className={'theme-choice theme-choice-' + key + (theme === key ? ' selected' : '')} aria-pressed={theme === key} onClick={() => setTheme(key)}><span className="theme-swatches" aria-hidden="true"><span /><span /><span /></span><strong>{themeLabels[key]}</strong><span>{key === 'hangar' ? 'Оливковая и тёплая' : key === 'slate' ? 'Холодная и нейтральная' : 'Светлая с тёмным текстом'}</span></button>)}</div>
-        <span className="field-label motion-label">ДВИЖЕНИЕ</span><div className="insight-switch" role="group" aria-label="Анимация интерфейса"><button type="button" disabled={busy} className={motion === 'system' ? 'active' : ''} aria-pressed={motion === 'system'} onClick={() => setMotion('system')}>Как в системе</button><button type="button" disabled={busy} className={motion === 'reduced' ? 'active' : ''} aria-pressed={motion === 'reduced'} onClick={() => setMotion('reduced')}>Уменьшить движение</button></div><p className="settings-description">Системное ограничение движения учитывается всегда. Повышенный контраст доступен во вкладке «Вид и фильтры».</p></>
+      : page === 'theme' ? <><div className="theme-options" role="group" aria-label="Цветовая тема">{(Object.keys(themeLabels) as Theme[]).map(key => <Button type="button" key={key} disabled={busy} className={'theme-choice theme-choice-' + key + (theme === key ? ' selected' : '')} aria-pressed={theme === key} onClick={() => setTheme(key)}><span className="theme-swatches" aria-hidden="true"><span /><span /><span /></span><strong>{themeLabels[key]}</strong><span>{key === 'hangar' ? 'Оливковая и тёплая' : key === 'slate' ? 'Холодная и нейтральная' : 'Светлая с тёмным текстом'}</span></Button>)}</div>
+        <span className="field-label motion-label">ДВИЖЕНИЕ</span><div className="insight-switch" role="group" aria-label="Анимация интерфейса"><Button type="button" disabled={busy} className={motion === 'system' ? 'active' : ''} aria-pressed={motion === 'system'} onClick={() => setMotion('system')}>Как в системе</Button><Button type="button" disabled={busy} className={motion === 'reduced' ? 'active' : ''} aria-pressed={motion === 'reduced'} onClick={() => setMotion('reduced')}>Уменьшить движение</Button></div><p className="settings-description">Системное ограничение движения учитывается всегда. Повышенный контраст доступен во вкладке «Вид и фильтры».</p></>
         : <><p className="settings-description">Выберите содержимое «Прогресса». Основные показатели закреплены сверху, остальные модули открываются переключателями в заданном порядке.</p>
           <div className="module-settings" role="group" aria-label="Состав личной панели">{orderedModules.map(key => {
             const enabled = modules.includes(key);
             const panels: DashboardModule[] = modules.filter(item => item !== 'metrics');
             const index = panels.indexOf(key);
-            return <div className={'module-setting' + (enabled ? ' enabled' : '')} key={key}><button type="button" className="module-toggle" aria-pressed={enabled} aria-label={'Модуль ' + moduleLabels[key]} disabled={busy || (enabled && modules.length === 1)} onClick={() => toggle(key)}><span aria-hidden="true">{enabled ? '✓' : '+'}</span><strong>{moduleLabels[key]}</strong><small>{enabled ? 'Включён' : 'Выключен'}</small></button>
-              {key !== 'metrics' && enabled && <div className="module-order"><button type="button" disabled={busy || index === 0} aria-label={'Выше: ' + moduleLabels[key]} onClick={() => move(key, -1)}>↑</button><button type="button" disabled={busy || index === panels.length - 1} aria-label={'Ниже: ' + moduleLabels[key]} onClick={() => move(key, 1)}>↓</button></div>}</div>;
+            return <div className={'module-setting' + (enabled ? ' enabled' : '')} key={key}><Button type="button" className="module-toggle" aria-pressed={enabled} aria-label={'Модуль ' + moduleLabels[key]} disabled={busy || (enabled && modules.length === 1)} onClick={() => toggle(key)}><span aria-hidden="true">{enabled ? '✓' : '+'}</span><strong>{moduleLabels[key]}</strong><small>{enabled ? 'Включён' : 'Выключен'}</small></Button>
+              {key !== 'metrics' && enabled && <div className="module-order"><Button type="button" disabled={busy || index === 0} aria-label={'Выше: ' + moduleLabels[key]} onClick={() => move(key, -1)}>↑</Button><Button type="button" disabled={busy || index === panels.length - 1} aria-label={'Ниже: ' + moduleLabels[key]} onClick={() => move(key, 1)}>↓</Button></div>}</div>;
           })}</div><p className="chart-footnote">Оставьте хотя бы один модуль. Остальные разделы статистики доступны независимо от этой настройки.</p></>}
-    <button type="button" className="primary-button" disabled={busy} onClick={() => onCommand({ action: 'save_preferences', preferences: {
+    <Button type="button" className="primary-button" disabled={busy} onClick={() => onCommand({ action: 'save_preferences', preferences: {
       vehicle: snapshot.selection.vehicle, window: snapshot.selection.window, tab, density, contrast,
       ...(advanced ? { theme, motion, modules } : {})
-    } })}>Сохранить вид и фильтры</button>
+    } })}>Сохранить вид и фильтры</Button>
     <p className="trend-note">Настройки применяются после сохранения и восстанавливаются при следующем открытии окна. Для другого аккаунта используется отдельный профиль.</p>
   </div>;
 }
@@ -103,24 +104,24 @@ function GoalEditor({ snapshot, busy, onCommand }: { snapshot: Snapshot; busy: b
     goal.vehicle_label || snapshot.vehicles.find(item => item.name === goal.vehicle)?.label);
   return <section className="settings-card" aria-label="Настройка целей">
     <div className="section-heading"><h2>{editor ? 'Задать личную цель' : 'Личные цели'}</h2>
-      <button type="button" disabled={busy} onClick={() => setEditor(!editor)}>{editor ? 'К списку целей' : 'Добавить цель'}</button></div>
+      <Button type="button" disabled={busy} onClick={() => setEditor(!editor)}>{editor ? 'К списку целей' : 'Добавить цель'}</Button></div>
     {editor ? <>
       <div className="goal-editor-row"><VehiclePicker vehicles={snapshot.vehicles.filter(v => v.name !== 'unknown')} selected={vehicle} disabled={busy} onSelect={setVehicle} />
-        <label className="settings-input"><span>Средний урон</span><input type="text" inputMode="numeric" maxLength={5} value={target} disabled={busy} aria-label="Целевой средний урон" onChange={event => setTarget(event.target.value)} /></label>
-        <label className="settings-input"><span>Боёв в серии</span><input type="text" inputMode="numeric" maxLength={4} value={windowSize} disabled={busy} aria-label="Боёв для цели" onChange={event => setWindowSize(event.target.value)} /></label>
+        <label className="settings-input"><span>Средний урон</span><input type="text" inputMode="numeric" maxLength={5} value={target} className={busy ? 'is-disabled' : ''} disabled={busy} aria-label="Целевой средний урон" onChange={event => setTarget(event.target.value)} /></label>
+        <label className="settings-input"><span>Боёв в серии</span><input type="text" inputMode="numeric" maxLength={4} value={windowSize} className={busy ? 'is-disabled' : ''} disabled={busy} aria-label="Боёв для цели" onChange={event => setWindowSize(event.target.value)} /></label>
       </div>
       <p className="settings-description">Выберите одну машину. Урон: от 1 до 50 000; серия: от 10 до 1 000 боёв. Сохранение заменит цель этой машины с таким же размером серии.</p>
-      <button type="button" className="primary-button" disabled={busy || !valid} onClick={() => onCommand({ action: 'save_goal', goal: { vehicle, window: windowValue, target_avg_damage: targetValue } })}>Сохранить цель</button>
+      <Button type="button" className="primary-button" disabled={busy || !valid} onClick={() => onCommand({ action: 'save_goal', goal: { vehicle, window: windowValue, target_avg_damage: targetValue } })}>Сохранить цель</Button>
       <p className="trend-note">Цель применяется только к вашему текущему аккаунту. Пропуски не превращаются в нули; полнота серии видна во вкладке «Динамика и цели».</p>
     </> : <>
       {goals.length === 0 ? <div className="chart-empty"><strong>Цели пока не заданы</strong><span>Добавьте цель по среднему урону для выбранной машины.</span></div> : <div className="editable-goals">
         {goals.slice(current * 3, (current + 1) * 3).map(goal => <div className="editable-goal" key={goal.vehicle + ':' + goal.window}>
           <div><strong>{label(goal)}</strong><span>{formatNumber(goal.target_avg_damage) + ' урона · ' + goal.window + ' боёв'}</span></div>
-          <button type="button" disabled={busy} aria-label={'Изменить цель ' + label(goal) + ' ' + goal.window} onClick={() => edit(goal)}>Изменить</button>
-          <button type="button" disabled={busy} aria-label={'Удалить цель ' + label(goal) + ' ' + goal.window} onClick={() => onCommand({ action: 'delete_goal', goal: { vehicle: goal.vehicle, window: goal.window } })}>Удалить</button>
+          <Button type="button" disabled={busy} aria-label={'Изменить цель ' + label(goal) + ' ' + goal.window} onClick={() => edit(goal)}>Изменить</Button>
+          <Button type="button" disabled={busy} aria-label={'Удалить цель ' + label(goal) + ' ' + goal.window} onClick={() => onCommand({ action: 'delete_goal', goal: { vehicle: goal.vehicle, window: goal.window } })}>Удалить</Button>
         </div>)}
       </div>}
-      <div className="page-controls"><button type="button" disabled={busy || current === 0} aria-label="Предыдущая страница целей" onClick={() => setPage(current - 1)}>Назад</button><span>{current + 1} / {pages}</span><button type="button" disabled={busy || current + 1 >= pages} aria-label="Следующая страница целей" onClick={() => setPage(current + 1)}>Далее</button></div>
+      <div className="page-controls"><Button type="button" disabled={busy || current === 0} aria-label="Предыдущая страница целей" onClick={() => setPage(current - 1)}>Назад</Button><span>{String(current + 1) + ' / ' + pages}</span><Button type="button" disabled={busy || current + 1 >= pages} aria-label="Следующая страница целей" onClick={() => setPage(current + 1)}>Далее</Button></div>
     </>}
   </section>;
 }
@@ -130,15 +131,15 @@ export function SettingsView({ snapshot, busy, onCommand }: { snapshot: Snapshot
   if (!snapshot.workspace?.can_edit) return <div className="chart-empty"><strong>Этот источник доступен только для чтения</strong><span>Настройки и команды появятся при подключении поддерживаемой версии мода.</span></div>;
   return <section className="workspace-view" aria-label="Настройки TankSession">
     <div className="insight-switch" role="group" aria-label="Раздел настроек">
-      <button type="button" className={tab === 'appearance' ? 'active' : ''} aria-pressed={tab === 'appearance'} disabled={busy} onClick={() => setTab('appearance')}>Вид и фильтры</button>
-      <button type="button" className={tab === 'goals' ? 'active' : ''} aria-pressed={tab === 'goals'} disabled={busy} onClick={() => setTab('goals')}>Цели</button>
-      <button type="button" className={tab === 'export' ? 'active' : ''} aria-pressed={tab === 'export'} disabled={busy} onClick={() => setTab('export')}>Экспорт CSV</button>
+      <Button type="button" className={tab === 'appearance' ? 'active' : ''} aria-pressed={tab === 'appearance'} disabled={busy} onClick={() => setTab('appearance')}>Вид и фильтры</Button>
+      <Button type="button" className={tab === 'goals' ? 'active' : ''} aria-pressed={tab === 'goals'} disabled={busy} onClick={() => setTab('goals')}>Цели</Button>
+      <Button type="button" className={tab === 'export' ? 'active' : ''} aria-pressed={tab === 'export'} disabled={busy} onClick={() => setTab('export')}>Экспорт CSV</Button>
     </div>
     {tab === 'appearance' ? <AppearanceForm snapshot={snapshot} busy={busy} onCommand={onCommand} /> : tab === 'goals' ? <GoalEditor snapshot={snapshot} busy={busy} onCommand={onCommand} /> : <div className="settings-card">
       <div className="section-heading"><h2>Экспорт сохранённой истории</h2><span className="subtle-tag">CSV · UTF-8</span></div>
       <p className="settings-description">{'Выборка: ' + (snapshot.selection.vehicle ? vehicleLabelFor(snapshot.selection.vehicle, snapshot.vehicles) : 'вся техника') + ' · ' + snapshot.summary.battles + ' записей текущего аккаунта.'}</p>
       <p className="settings-description">Будет сохранена вся выбранная история, включая старые страницы. Окно сравнения 10/30/100 не ограничивает экспорт.</p>
-      <button type="button" className="primary-button" disabled={busy || snapshot.summary.battles === 0} onClick={() => onCommand({ action: 'export_csv' })}>Сохранить CSV</button>
+      <Button type="button" className="primary-button" disabled={busy || snapshot.summary.battles === 0} onClick={() => onCommand({ action: 'export_csv' })}>Сохранить CSV</Button>
       <p className="trend-note">{snapshot.source === 'demo' ? 'Демонстрационный CSV создаётся во временной папке локального сервера.' : 'Файл создаётся в подпапке exports рядом с журналом боёв. В игре: mods/configs/tanksession_analytics/exports.'} Идентификаторы аккаунта и арены в экспорт не включаются. Существующая история остаётся на месте.</p>
       {snapshot.source === 'demo' && <p className="settings-description">В демонстрации экспортируются только вымышленные данные.</p>}
     </div>}

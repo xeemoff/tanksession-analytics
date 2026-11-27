@@ -12,6 +12,7 @@ from .economy import derive_economy
 from .vehicles import (coherent_identity, identity_from_internal_name,
                        identity_from_type_descr, normalize_vehicle_id,
                        nation_for_identity, normalize_vehicle_metadata,
+                       normalize_vehicle_label,
                        VEHICLE_METADATA_FIELDS)
 
 try:
@@ -133,6 +134,8 @@ def validate_record(record):
 def _validate_record(record):
     if not isinstance(record, dict):
         raise ValueError('A battle record must be an object')
+    if record.get('event') == 'additional_xp':
+        raise ValueError('A journal XP event needs the battle-store reducer')
     schema = record.get('schema', 1)
     if isinstance(schema, bool) or not isinstance(schema, (int, long_type)) or schema != 1:
         raise ValueError('Unsupported battle-record schema')
@@ -167,6 +170,11 @@ def _validate_record(record):
     clean['vehicle_id'] = normalize_vehicle_id(identity)
     if identity is not None and clean['vehicle_id'] is None:
         raise ValueError('Invalid vehicle_id')
+    label = record.get('vehicle_label')
+    clean['vehicle_label'] = normalize_vehicle_label(label)
+    if label is not None and (clean['vehicle_label'] is None or
+                              clean['vehicle_id'] is None):
+        raise ValueError('Invalid or unidentified vehicle label')
     metadata = normalize_vehicle_metadata(record, clean['vehicle_id'])
     for name in VEHICLE_METADATA_FIELDS:
         if record.get(name) is not None and metadata[name] is None:
@@ -359,6 +367,8 @@ def normalize_result(results, context=None, observed_at=None):
         'timestamp': when,
         'vehicle': _as_text(vehicle),
         'vehicle_id': vehicle_identity,
+        'vehicle_label': (context.get('vehicle_label')
+                          if captured_identity is not None else None),
         'mode': _as_text(mode if mode is not None else 'unknown'),
         'outcome': outcome,
         'damage': _non_negative_int(_get_first(personal, ('damageDealt',))),

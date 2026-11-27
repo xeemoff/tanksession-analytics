@@ -65,7 +65,8 @@ test('native data errors clear current data while stale errors are ignored', asy
   host.model.payload = JSON.stringify(error); listeners.get('viewEnv.onDataChanged')?.();
   assert.equal(errors.length, 0);
   host.model.payload = JSON.stringify({ ...error, request_id: 'ui-2' }); listeners.get('viewEnv.onDataChanged')?.();
-  assert.match(errors[0], /goals.json/);
+  assert.match(errors[0], /Обновите панель/);
+  assert.doesNotMatch(errors[0], /goals.json/);
   host.model.payload = JSON.stringify({ ...error, request_id: 'closed' }); listeners.get('viewEnv.onDataChanged')?.();
   assert.match(errors[1], /закрыто/);
   dispose();

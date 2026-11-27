@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { useState } from 'react';
 import { Snapshot, VehicleClass, VehicleEntry, VehicleMetadata } from './contracts';
 import { formatNumber } from './format';
@@ -46,7 +47,7 @@ export function VehicleCard({ vehicle, selected = false, onSelect }: { vehicle: 
     <VehicleArt vehicleClass={vehicle.vehicle_class} />
     <div className="vehicle-card-name"><h3>{vehicleLabel(vehicle.name, vehicle.label)}</h3><span>{vehicle.vehicle_nation ? nationLabels[vehicle.vehicle_nation] || vehicle.vehicle_nation : 'Нация неизвестна'}</span></div>
     <div className="vehicle-card-footer"><span><strong>{formatNumber(vehicle.battles)}</strong> сохранённых боёв</span>
-      {onSelect && <button type="button" disabled={selected} onClick={() => onSelect(vehicle.name)} aria-label={'Выбрать ' + vehicleLabel(vehicle.name, vehicle.label)}>{selected ? 'Выбрано' : 'Выбрать'}</button>}</div>
+      {onSelect && <Button type="button" disabled={selected} onClick={() => onSelect(vehicle.name)} aria-label={'Выбрать ' + vehicleLabel(vehicle.name, vehicle.label)}>{selected ? 'Выбрано' : 'Выбрать'}</Button>}</div>
     <p className="vehicle-art-note">Схема класса, не модель машины. Характеристики — только из сохранённых данных.</p>
   </article>;
 }
@@ -63,6 +64,6 @@ export function VehicleCollection({ snapshot, onSelect }: { snapshot: Snapshot; 
       <label className="search-field"><span className="sr-only">Найти карточку техники</span><input type="search" value={query} maxLength={64} placeholder="Название, класс, нация" onChange={event => { setQuery(event.target.value); setPage(0); }} /></label></div>
     <div className="vehicle-card-grid">{vehicles.slice(current * 3, current * 3 + 3).map(vehicle => <VehicleCard key={vehicle.name} vehicle={vehicle} selected={snapshot.selection.vehicle === vehicle.name} onSelect={onSelect} />)}</div>
     {vehicles.length === 0 && <div className="chart-empty"><strong>Техника не найдена</strong><span>Попробуйте другое название или очистите поиск.</span></div>}
-    <div className="page-controls"><button type="button" disabled={current === 0} onClick={() => setPage(current - 1)} aria-label="Предыдущие карточки техники">Назад</button><span>{current + 1} / {pages}</span><button type="button" disabled={current + 1 >= pages} onClick={() => setPage(current + 1)} aria-label="Следующие карточки техники">Далее</button></div>
+    <div className="page-controls"><Button type="button" disabled={current === 0} onClick={() => setPage(current - 1)} aria-label="Предыдущие карточки техники">Назад</Button><span>{String(current + 1) + ' / ' + pages}</span><Button type="button" disabled={current + 1 >= pages} onClick={() => setPage(current + 1)} aria-label="Следующие карточки техники">Далее</Button></div>
   </section>;
 }

@@ -3,7 +3,7 @@
 **Персональная аналитика завершённых боёв для «Мира танков».**
 
 ![Проверки основной ветки](https://github.com/xeemoff/tanksession-analytics/actions/workflows/tests.yml/badge.svg?branch=main)
-![Версия](https://img.shields.io/badge/version-2.0.0--rc1-b79b63)
+![Версия](https://img.shields.io/badge/version-2.0.0--rc2-b79b63)
 ![Python](https://img.shields.io/badge/Python-2.7%20%7C%203.9%2B-3776ab)
 ![React](https://img.shields.io/badge/React-TypeScript-2e7f96)
 ![C++23](https://img.shields.io/badge/C%2B%2B-23-6b74af)
@@ -11,9 +11,9 @@
 
 TankSession Analytics собирает собственные послебоевые результаты и показывает динамику урона, карты и технику, активность, экономику, цели и отчёты за период. Интерфейс на **React + TypeScript** доступен в ангаре через **Gameface** и отдельно в браузере. Самостоятельный **C++23-движок** строит офлайн-отчёты по той же проверенной истории. Данные обрабатываются и хранятся локально; внешние серверы проекта не используются.
 
-[Быстрый старт](START_HERE_RU.md) · [Установка](docs/INSTALL_RU.md) · [Изменения 2.0](docs/releases/v2.0.0-rc1.md) · [Архитектура](docs/ARCHITECTURE_RU.md) · [Готовность 2.0](docs/READINESS_2_0_0_RU.md) · [Протокол испытаний](docs/CLIENT_VALIDATION_RU.md)
+[Быстрый старт](START_HERE_RU.md) · [Установка](docs/INSTALL_RU.md) · [Изменения 2.0](docs/releases/v2.0.0-rc2.md) · [Архитектура](docs/ARCHITECTURE_RU.md) · [Готовность 2.0](docs/READINESS_2_0_0_RU.md) · [Протокол испытаний](docs/CLIENT_VALIDATION_RU.md)
 
-> **2.0.0-rc1 — кандидат для испытаний на клиенте 1.46.0.0.** Стабильная версия 2.0.0 требует живой проверки этого пакета. На предыдущих кандидатах rc4–rc8 проверены обычное сохранение собственных результатов, открытие Gameface, часть навигации и центрирование. Новые функции, дополнительные игровые поля и восстановление свежего отложенного результата требуют проверки на этой сборке. Проект самостоятельный и неофициальный.
+> **2.0.0-rc2 — исправления по игровой проверке RC1 на клиенте 1.46.0.0.** В RC1 подтверждены запуск менеджера и Gameface, сохранность прежней истории и добавление нового боя с картой и метаданными. Найдены ошибки сохранения настроек, колеса мыши, вёрстки и обновления дополнительного опыта. Их исправления требуют повторной проверки RC2 в игре; стабильный 2.0.0 ещё не принят. [Фактический протокол](docs/CLIENT_VALIDATION_RU.md). Проект самостоятельный и неофициальный.
 
 ## Возможности
 
@@ -57,14 +57,14 @@ TankSession Analytics собирает собственные послебоев
 
 ## Скачать и установить
 
-**[Скачать 2.0.0-rc1](https://github.com/xeemoff/tanksession-analytics/releases/tag/v2.0.0-rc1)** — страница кандидата с готовыми архивами и контрольными суммами. Текущий статус автоматических проверок и испытаний в игре — в [отчёте готовности](docs/READINESS_2_0_0_RU.md).
+**[Скачать 2.0.0-rc2](https://github.com/xeemoff/tanksession-analytics/releases/tag/v2.0.0-rc2)** — страница кандидата с готовыми архивами и контрольными суммами. Текущий статус автоматических проверок и испытаний в игре — в [отчёте готовности](docs/READINESS_2_0_0_RU.md).
 
 | Файл | Назначение |
 |---|---|
-| [Windows.zip](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc1/TankSession_Analytics_2.0.0-rc1_Windows.zip) | `.mtmod`, SHA-256, manifest, графический менеджер, инструкция и примечания. Для установки не нужны Python и Node.js |
-| `ru.tanksession.analytics_2.0.0-rc1.mtmod` и `.sha256` | Пакет и контрольная сумма для ручной установки |
-| [Preview.zip](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc1/TankSession_Analytics_2.0.0-rc1_Preview.zip) | Браузерный просмотр с готовыми ресурсами. Нужны Python 3.9+ и браузер; Node.js не требуется |
-| [Native Windows x64](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc1/TankSession_Analytics_2.0.0-rc1_Native_Windows_x64.zip) / [Linux x64](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc1/TankSession_Analytics_2.0.0-rc1_Native_Linux_x64.zip) | Отдельный C++-движок и Python 3-адаптер для отчётов; в игру не устанавливается |
+| [Windows.zip](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc2/TankSession_Analytics_2.0.0-rc2_Windows.zip) | `.mtmod`, SHA-256, manifest, графический менеджер, инструкция и примечания. Для установки не нужны Python и Node.js |
+| `ru.tanksession.analytics_2.0.0-rc2.mtmod` и `.sha256` | Пакет и контрольная сумма для ручной установки |
+| [Preview.zip](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc2/TankSession_Analytics_2.0.0-rc2_Preview.zip) | Браузерный просмотр с готовыми ресурсами. Нужны Python 3.9+ и браузер; Node.js не требуется |
+| [Native Windows x64](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc2/TankSession_Analytics_2.0.0-rc2_Native_Windows_x64.zip) / [Linux x64](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc2/TankSession_Analytics_2.0.0-rc2_Native_Linux_x64.zip) | Отдельный C++-движок и Python 3-адаптер для отчётов; в игру не устанавливается |
 
 В выпуске для каждого из пяти файлов есть отдельный `.sha256`. Промежуточные [артефакты Actions](https://github.com/xeemoff/tanksession-analytics/actions/workflows/tests.yml) хранятся 14 дней; для их скачивания может требоваться вход в GitHub. Полная инструкция — [INSTALL_RU.md](docs/INSTALL_RU.md).
 
@@ -113,7 +113,7 @@ python tools/preview_ui.py --data "D:/your-folder/battles.jsonl" --account "ID_�
 
 ## Настройки, цели и CSV
 
-В разделе настроек можно сохранить текущую технику, окно сравнения, стартовую вкладку, плотность и контраст. Выбор хранится для подтверждённого аккаунта. Личные настройки и цели находятся в `profiles/*.json`, предыдущая версия профиля сохраняется в `.bak`, новый файл записывается атомарно.
+В разделе настроек можно сохранить текущую технику, окно сравнения, стартовую вкладку, плотность и контраст. Выбор хранится для подтверждённого аккаунта. Личные настройки и цели находятся в `profiles/*.json`, предыдущая версия профиля сохраняется в `.bak`. Полностью записанный временный файл заменяет профиль через доступный атомарный API; в урезанном Windows Python без него используются переименования с копией `.rollback` и восстановлением после прерывания. Подробные гарантии — в [контракте данных](docs/DATA_AND_UI_RU.md).
 
 Цель состоит из техники, размера окна и целевого среднего урона. Она считается достигнутой только при полном окне и **100% известных значений урона**; сравнение выполняется до округления. Цели разных аккаунтов не объединяются.
 
@@ -176,17 +176,17 @@ cd ..
 
 ```powershell
 python tools/build.py --python2 "C:/Python27/python.exe"
-python tools/build.py --verify "dist/ru.tanksession.analytics_2.0.0-rc1.mtmod"
-python tools/package_release.py --tag v2.0.0-rc1
+python tools/build.py --verify "dist/ru.tanksession.analytics_2.0.0-rc2.mtmod"
+python tools/package_release.py --tag v2.0.0-rc2
 ```
 
 `--verify` проверяет состав, CRC, метаданные и заголовки байткода без исполнения архива. Публикация по тегу повторяет автоматические проверки; стабильный канал дополнительно требует закрытого живого протокола и SHA-256 именно проверенного пакета.
 
 ## Интерфейс 2.0
 
-![Аналитика по картам и технике в 2.0.0-rc1](docs/images/hangar-v2-analytics.png)
+![Аналитика по картам и технике в 2.0.0-rc2](docs/images/hangar-v2-analytics.png)
 
-*Настоящий React-интерфейс **2.0.0-rc1** в Chromium на вымышленных данных. Снимки из успешного [CI 45966051338](https://github.com/xeemoff/tanksession-analytics/actions/runs/45966051338), коммит `09b03f6`; PNG сохранены без преобразования. Нативный Gameface проверяется отдельно.*
+*Настоящий React-интерфейс **2.0.0-rc2** в Chromium на вымышленных данных. Снимки из успешного [CI 46038083441](https://github.com/xeemoff/tanksession-analytics/actions/runs/46038083441), коммит `8865811`; PNG сохранены без преобразования. Нативный Gameface проверяется отдельно.*
 
 | Карточки техники | Светлая тема |
 |---|---|

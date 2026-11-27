@@ -3,6 +3,7 @@ import http.client
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -10,9 +11,11 @@ import threading
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
+import preview_ui as preview_module
 from preview_ui import create_ui_server, main
 
 
@@ -71,6 +74,27 @@ class UiPreviewTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def enable_writes(self):
+        self.stop_server()
+        self.server = create_ui_server(str(self.journal), '101', port=0,
+                                       assets_dir=str(self.assets), allow_write=True)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def begin_post(self, headers, path='/api/command'):
+        connection = http.client.HTTPConnection('127.0.0.1', self.server.server_port, timeout=5)
+        self.addCleanup(connection.close)
+        connection.putrequest('POST', path, skip_host=any(name.lower() == 'host' for name, _ in headers))
+        for name, value in headers:
+            connection.putheader(name, value)
+        connection.endheaders()
+        return connection
+
+    def assert_no_mutations(self, original):
+        self.assertEqual(self.journal.read_bytes(), original)
+        self.assertFalse((Path(self.folder.name) / 'profiles').exists())
+        self.assertFalse((Path(self.folder.name) / 'exports').exists())
+
     def test_initialization_reads_preferences_but_real_preview_is_read_only_by_default(self):
         request = dict(protocol=1, request_id='init', vehicle='', window=10,
                        page=0, action='initialize')
@@ -81,6 +105,55 @@ class UiPreviewTests(unittest.TestCase):
         self.assertEqual(self.post(request)[0], 403)
         self.assertFalse((Path(self.folder.name) / 'exports').exists())
 
+    def test_readonly_preview_projects_rollback_without_writes_and_opt_in_recovers(self):
+        base = Path(self.folder.name)
+        workspace = preview_module.Workspace(str(base))
+        path = Path(workspace._path('101'))
+        path.parent.mkdir()
+        profile = {'version': 2, 'preferences': {'vehicle': '', 'window': 30, 'tab': 'settings',
+                   'density': 'compact', 'contrast': 'high'}, 'goals': []}
+        raw = (json.dumps(profile) + '\n').encode('utf-8')
+        rollback = path.with_name(path.name + '.rollback')
+        rollback.write_bytes(raw)
+        path.with_name(path.name + '.bak.rollback').write_bytes(raw)
+        (path.parent / '.tsa-interrupted.tmp').write_bytes(b'uncommitted temporary bytes')
+
+        def directory_contents():
+            return {str(entry.relative_to(base)): None if entry.is_dir() else entry.read_bytes()
+                    for entry in base.rglob('*')}
+
+        before = directory_contents()
+        initialize = dict(protocol=1, request_id='readonly-init', vehicle='', window=10,
+                          action='initialize')
+        status, body = self.post(initialize)
+        self.assertEqual(status, 200)
+        initialized = json.loads(body)
+        self.assertEqual(initialized['status'], 'ready')
+        self.assertEqual(initialized['summary']['battles'], 2)
+        self.assertEqual(initialized['workspace']['preferences']['contrast'], 'high')
+        self.assertFalse(initialized['workspace']['can_edit'])
+        self.assertEqual(directory_contents(), before)
+
+        status, _, body = self.get('/api/snapshot?request_id=readonly-get')
+        self.assertEqual(status, 200)
+        refreshed = json.loads(body)
+        self.assertEqual(refreshed['status'], 'ready')
+        self.assertEqual(refreshed['summary']['battles'], 2)
+        self.assertEqual(refreshed['workspace']['preferences']['contrast'], 'high')
+        self.assertFalse(refreshed['workspace']['can_edit'])
+        self.assertEqual(directory_contents(), before)
+
+        self.enable_writes()
+        status, _, body = self.get('/api/snapshot?request_id=writable-get')
+        self.assertEqual(status, 200)
+        recovered = json.loads(body)
+        self.assertTrue(recovered['workspace']['can_edit'])
+        self.assertEqual(recovered['workspace']['preferences']['contrast'], 'high')
+        self.assertEqual(recovered['summary']['battles'], 2)
+        expected = dict(before)
+        expected[str(path.relative_to(base))] = expected.pop(str(rollback.relative_to(base)))
+        self.assertEqual(directory_contents(), expected)
+
     def test_cross_origin_or_form_commands_are_rejected(self):
         request = dict(protocol=1, request_id='init', vehicle='', window=10, action='initialize')
         for headers in ({'Content-Type': 'text/plain'},
@@ -90,6 +163,106 @@ class UiPreviewTests(unittest.TestCase):
                         {'Content-Type': 'application/json', 'X-TankSession-Request': '1',
                          'Sec-Fetch-Site': 'cross-site'}):
             self.assertEqual(self.post(request, headers)[0], 403)
+
+    def test_rejected_split_post_bodies_are_consumed_before_response_and_never_mutate(self):
+        self.enable_writes()
+        original = self.journal.read_bytes()
+        request = dict(protocol=1, request_id='reject-save', vehicle='', window=10,
+                       action='save_preferences', preferences=dict(vehicle='', window=10,
+                       tab='settings', density='compact', contrast='high'))
+        raw = json.dumps(request).encode('utf-8')
+        raw += b' ' * (preview_module.MAX_COMMAND_BYTES - len(raw))
+        started = threading.Event()
+        handler = self.server.RequestHandlerClass
+        original_post = handler.do_POST
+
+        def observed_post(instance):
+            started.set()
+            original_post(instance)
+
+        cases = (({'Content-Type': 'text/plain'}, '/api/command', 403, 'command_rejected'),
+                 ({'X-TankSession-Request': None}, '/api/command', 403, 'command_rejected'),
+                 ({'Host': 'unrelated.example'}, '/api/command', 403, 'origin_rejected'),
+                 ({'Origin': 'https://unrelated.example'}, '/api/command', 403, 'origin_rejected'),
+                 ({'Sec-Fetch-Site': 'cross-site'}, '/api/command', 403, 'origin_rejected'),
+                 ({}, '/not-a-command', 404, 'not_found'))
+        with mock.patch.object(handler, 'do_POST', observed_post):
+            for overrides, path, expected_status, expected_error in cases:
+                with self.subTest(headers=overrides, path=path):
+                    headers = {'Content-Type': 'application/json', 'X-TankSession-Request': '1',
+                               'Content-Length': str(len(raw))}
+                    headers.update(overrides)
+                    started.clear()
+                    connection = self.begin_post([(key, value) for key, value in headers.items()
+                                                  if value is not None], path)
+                    self.assertTrue(started.wait(5), 'Server did not begin handling the POST')
+                    # The body has deliberately not been sent. Closing now
+                    # races its later bytes and loses the 403 on Windows.
+                    connection.sock.settimeout(0.15)
+                    with self.assertRaises(socket.timeout):
+                        connection.sock.recv(1)
+                    connection.sock.settimeout(5)
+                    connection.send(raw[:1])
+                    connection.send(raw[1:])
+                    response = connection.getresponse()
+                    self.assertEqual(response.status, expected_status)
+                    self.assertEqual(response.getheader('Connection'), 'close')
+                    self.assertEqual(json.loads(response.read()), {'error': expected_error})
+                    connection.close()
+                    self.assert_no_mutations(original)
+        # The same command is writable when it passes every boundary check.
+        status, body = self.post(request)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)['workspace']['operation']['code'], 'preferences_saved')
+
+    def test_ambiguous_unsupported_or_oversized_post_framing_is_rejected_without_reading_body(self):
+        self.enable_writes()
+        original = self.journal.read_bytes()
+        cases = (([], 400),
+                 ([('Content-Length', '0')], 400),
+                 ([('Content-Length', '-1')], 400),
+                 ([('Content-Length', '+1')], 400),
+                 ([('Content-Length', '16385')], 400),
+                 ([('Content-Length', '100000000000000000000')], 400),
+                 ([('Content-Length', '10'), ('Content-Length', '10')], 400),
+                 ([('Content-Length', '10'), ('Content-Length', '20')], 400),
+                 ([('Content-Length', '10,10')], 400),
+                 ([('Transfer-Encoding', 'chunked')], 403),
+                 ([('Content-Length', '10'), ('Transfer-Encoding', 'chunked')], 403))
+        for framing, expected_status in cases:
+            with self.subTest(framing=framing):
+                connection = self.begin_post([('Content-Type', 'application/json'),
+                                               ('X-TankSession-Request', '1')] + framing)
+                # No body is sent: unknown or unbounded framing must not make
+                # the single-threaded preview wait for an advertised payload.
+                response = connection.getresponse()
+                self.assertEqual(response.status, expected_status)
+                self.assertEqual(response.getheader('Connection'), 'close')
+                self.assertIn(json.loads(response.read())['error'], ('invalid_request', 'command_rejected'))
+                connection.close()
+                self.assert_no_mutations(original)
+
+    def test_truncated_post_and_body_timeout_do_not_mutate_or_stall_preview(self):
+        self.enable_writes()
+        original = self.journal.read_bytes()
+        headers = [('Content-Type', 'application/json'), ('X-TankSession-Request', '1'),
+                   ('Content-Length', '100')]
+        connection = self.begin_post(headers)
+        connection.send(b'{')
+        connection.sock.shutdown(socket.SHUT_WR)
+        response = connection.getresponse()
+        self.assertEqual(response.status, 400)
+        self.assertEqual(json.loads(response.read()), {'error': 'invalid_request'})
+        connection.close()
+        with mock.patch.object(preview_module, 'REQUEST_TIMEOUT_SECONDS', 0.3):
+            connection = self.begin_post(headers)
+            connection.send(b'{')
+            response = connection.getresponse()
+            self.assertEqual(response.status, 400)
+            self.assertEqual(json.loads(response.read()), {'error': 'invalid_request'})
+            connection.close()
+        self.assert_no_mutations(original)
+        self.assertEqual(self.get('/api/snapshot')[0], 200)
 
     def test_pages_are_bounded_and_query_cannot_mutate(self):
         status, _, body = self.get('/api/snapshot?request_id=page&window=10&page=100')

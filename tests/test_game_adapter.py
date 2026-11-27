@@ -701,6 +701,210 @@ class GameAdapterTests(unittest.TestCase):
             json.dump([], stream)
         self.assertEqual(self.game._ui_snapshot('99', None)['goals'], [])
 
+    def _install_additional_xp_api(self):
+        handlers = {}
+        class Bus(object):
+            def addListener(self, name, handler):
+                handlers.setdefault(name, []).append(handler)
+            def removeListener(self, name, handler):
+                handlers[name].remove(handler)
+            def fire(self):
+                for handler in list(handlers.get('premiumXPBonusChanged', [])):
+                    handler(object())
+        service = types.SimpleNamespace(onResultPosted=Event(), offers={9001: (257, 450)},
+                                        applied=set())
+        service.isAddXPBonusApplied = lambda arena: arena in service.applied
+        service.getAdditionalXPValue = lambda arena: service.offers.get(arena, (None, 0))[1]
+        service.getVehicleForArena = lambda arena: types.SimpleNamespace(
+            intCD=service.offers.get(arena, (None, 0))[0])
+        api = types.ModuleType('skeletons.gui.battle_results')
+        api.IBattleResultsService = object()
+        def instance(interface):
+            if interface is api.IBattleResultsService:
+                return service
+            raise LookupError('Synthetic unavailable interface')
+        helpers = types.ModuleType('helpers')
+        helpers.dependency = types.SimpleNamespace(instance=instance)
+        shared = types.ModuleType('gui.shared')
+        shared.g_eventBus = Bus()
+        shared.events = types.SimpleNamespace(LobbySimpleEvent=types.SimpleNamespace(
+            PREMIUM_XP_BONUS_CHANGED='premiumXPBonusChanged'))
+        sys.modules.update({'helpers': helpers, 'skeletons.gui.battle_results': api,
+                            'gui.shared': shared})
+        return service, shared.g_eventBus, handlers
+
+    @staticmethod
+    def _bonus_posted(account=88, arena=9001, progress=None):
+        if progress is None:
+            progress = {257: {'xp': 600}}
+        return types.SimpleNamespace(arenaUniqueID=arena, personal=types.SimpleNamespace(
+            avatar=types.SimpleNamespace(accountDBID=account), xpProgress=progress))
+
+    def _bonus_baseline(self, **patch):
+        row = {'arena_id': '9001', 'account_id': '88', 'vehicle_id': 'type:257',
+               'vehicle': 'ussr:R04_T-34', 'timestamp': 1700000000,
+               'xp': 600, 'xp_base': 100, 'xp_bonus': 500, 'damage': 1000,
+               'mode': '1', 'outcome': 'win'}
+        row.update(patch)
+        self.game._store.upsert(row)
+        return row
+
+    def _bonus_hangar(self):
+        service, bus, handlers = self._install_additional_xp_api()
+        self.game.init()
+        self.player.arenaUniqueID = None
+        self.player.playerVehicleID = None
+        self.events.onAccountBecomePlayer.fire()
+        return service, bus, handlers
+
+    def test_additional_xp_observation_is_independent_of_cache_and_counts_one_battle(self):
+        service, bus, handlers = self._bonus_hangar()
+        self.assertIsNone(self.game._recovery)
+        baseline = self._bonus_baseline()
+        refreshed = []
+        self.game._gameface = types.SimpleNamespace(refresh=lambda: refreshed.append(True), stop=lambda: None)
+        service.onResultPosted.fire(self._bonus_posted())
+        self.assertEqual(len(self.game._additional_xp_candidates), 1)
+        bus.fire()  # No success proof yet.
+        self.assertEqual(self.game._store.records[0]['xp'], 600)
+        service.applied.add(9001)
+        service.offers.clear()  # Actual client removes the consumed offer.
+        bus.fire()
+        bus.fire()
+        after = self.game._store.records[0]
+        self.assertEqual((after['xp'], after['xp_bonus'], after['xp_base']), (1050, 950, 100))
+        self.assertEqual(len(self.game._store.records), 1)
+        self.assertEqual(self.game._store.upsert(baseline), 'duplicate')
+        self.assertEqual(refreshed, [True])
+        self.game._attach_result_service()
+        self.assertEqual(len(service.onResultPosted.handlers), 1)
+        self.assertEqual(len(handlers['premiumXPBonusChanged']), 1)
+        self.game.fini()
+        self.assertEqual(service.onResultPosted.handlers, [])
+        self.assertEqual(handlers['premiumXPBonusChanged'], [])
+
+    def test_additional_xp_needs_own_single_exact_vehicle_result_and_matching_offer(self):
+        service, bus, _ = self._bonus_hangar()
+        self._bonus_baseline()
+        for invalid in (self._bonus_posted(account=99), self._bonus_posted(arena=9002),
+                        self._bonus_posted(progress={257: {'xp': 600}, 513: {'xp': 10}}),
+                        self._bonus_posted(progress={513: {'xp': 600}})):
+            service.onResultPosted.fire(invalid)
+        self.assertEqual(self.game._additional_xp_candidates, {})
+        service.applied.add(9001)
+        bus.fire()
+        self.assertEqual(self.game._store.records[0]['xp'], 600)
+
+    def test_unobserved_old_bonus_and_replay_cannot_revise_history(self):
+        service, bus, _ = self._bonus_hangar()
+        self._bonus_baseline()
+        service.applied.add(9001)
+        service.onResultPosted.fire(self._bonus_posted())
+        bus.fire()
+        self.assertEqual(self.game._additional_xp_candidates, {})
+        self.assertEqual(self.game._store.records[0]['xp'], 600)
+        service.applied.clear()
+        service.onResultPosted.fire(self._bonus_posted())
+        service.applied.add(9001)
+        sys.modules['BattleReplay'].isPlaying = lambda: True
+        bus.fire()
+        self.assertEqual(self.game._store.records[0]['xp'], 600)
+
+    def test_bonus_confirmation_does_not_apply_to_latest_or_other_account_battle(self):
+        service, bus, _ = self._bonus_hangar()
+        self._bonus_baseline()
+        self._bonus_baseline(arena_id='9002', xp=200, xp_bonus=100)
+        service.onResultPosted.fire(self._bonus_posted())
+        service.applied.add(9002)
+        bus.fire()
+        self.assertEqual([row['xp'] for row in self.game._store.records], [600, 200])
+        self.player.databaseID = 99
+        service.applied.add(9001)
+        bus.fire()
+        self.assertEqual(self.game._store.records[0]['xp'], 600)
+        self.events.onAccountBecomePlayer.fire()
+        self.assertEqual(self.game._additional_xp_candidates, {})
+
+    def test_conflicting_offer_stays_blocked_until_next_login(self):
+        service, bus, _ = self._bonus_hangar()
+        self._bonus_baseline()
+        service.onResultPosted.fire(self._bonus_posted())
+        service.offers[9001] = (257, 451)
+        service.onResultPosted.fire(self._bonus_posted())
+        service.onResultPosted.fire(self._bonus_posted())
+        service.applied.add(9001)
+        bus.fire()
+        self.assertIsNone(self.game._additional_xp_candidates[('88', '9001')])
+        self.assertEqual(self.game._store.records[0]['xp'], 600)
+
+    def test_bonus_event_before_late_cache_fill_is_applied_once_after_fill(self):
+        service, bus, _ = self._bonus_hangar()
+        self._bonus_baseline(xp=None, xp_bonus=None, vehicle_id=None)
+        service.onResultPosted.fire(self._bonus_posted())
+        service.applied.add(9001)
+        bus.fire()
+        self.assertIsNone(self.game._store.records[0]['xp'])
+        self.assertEqual(len(self.game._additional_xp_candidates), 1)
+        self._bonus_baseline()
+        self.game._on_cache_record()
+        self.assertEqual(self.game._store.records[0]['xp'], 1050)
+        self.assertEqual(self.game._additional_xp_candidates, {})
+        self.game._on_cache_record()
+        self.assertEqual(self.game._store.diagnostics['lines'], 3)
+
+    def test_next_login_reattaches_after_client_clears_service_events(self):
+        service, bus, handlers = self._bonus_hangar()
+        service.onResultPosted.handlers[:] = []  # BattleResultsService.clear.
+        self.events.onAccountBecomePlayer.fire()
+        self.assertEqual(len(service.onResultPosted.handlers), 1)
+        self.assertEqual(len(handlers['premiumXPBonusChanged']), 1)
+        self._bonus_baseline()
+        service.onResultPosted.fire(self._bonus_posted())
+        service.applied.add(9001)
+        bus.fire()
+        self.assertEqual(self.game._store.records[0]['xp'], 1050)
+
+    def test_optional_display_failure_cannot_break_bonus_event_or_journal(self):
+        service, bus, _ = self._bonus_hangar()
+        self._bonus_baseline()
+        service.onResultPosted.fire(self._bonus_posted())
+        def fail():
+            raise RuntimeError('Synthetic private UI payload')
+        self.game._gameface = types.SimpleNamespace(refresh=fail, stop=lambda: None)
+        service.applied.add(9001)
+        bus.fire()
+        self.assertEqual(self.game._store.records[0]['xp'], 1050)
+        self.assertEqual(self.game._additional_xp_candidates, {})
+        self.assertFalse(any('private UI payload' in note for note in self.notes))
+
+    def test_old_history_label_projection_is_exact_bounded_and_read_only(self):
+        self.game.init()
+        self._bonus_baseline()
+        self._bonus_baseline(arena_id='9002')
+        calls = []
+        def get_type(value):
+            calls.append(value)
+            return types.SimpleNamespace(compactDescr=value, id=(0, value >> 8),
+                shortUserString=u'Т-34', level=6, classTag='mediumTank', tags=['mediumTank'])
+        items = types.ModuleType('items')
+        items.vehicles = types.SimpleNamespace(getVehicleType=get_type)
+        sys.modules['items'] = items
+        before = self.game._store.diagnostics['lines']
+        labelled = self.game._labelled_ui_records('88')
+        self.assertEqual([row['vehicle_label'] for row in labelled], [u'Т-34', u'Т-34'])
+        self.assertEqual([row['vehicle_id'] for row in labelled], ['type:257', 'type:257'])
+        self.assertEqual(calls, [257])
+        self.game._labelled_ui_records('88')
+        self.assertEqual(calls, [257])
+        self.assertEqual(self.game._store.diagnostics['lines'], before)
+        self.assertTrue(all(row['vehicle_label'] is None for row in self.game._store.records))
+        self.game._ui_vehicle_labels.clear()
+        for index in range(130):
+            self._bonus_baseline(arena_id=str(10000 + index), vehicle_id='type:%d' % ((index + 1) * 256 + 1))
+        calls[:] = []
+        self.game._labelled_ui_records('88')
+        self.assertEqual(len(calls), 128)
+
 
 if __name__ == '__main__':
     unittest.main()

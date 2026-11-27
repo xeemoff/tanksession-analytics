@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { useState } from 'react';
 import { Coach, GoalDefinition } from './contracts';
 import { formatNumber, signed } from './format';
@@ -24,10 +25,10 @@ export function CoachEvidence({ coach, onSaveGoal, busy = false }: { coach: Coac
     {(!coach.observations || coach.observations.length === 0) && <p className="coach-observation-empty">Новых числовых наблюдений пока нет. Недостаток данных — ограничение выборки, а не оценка вашей игры.</p>}
     {suggestion && <section className="goal-suggestion" aria-label="Ориентир личной цели"><div><span className="eyebrow">ОРИЕНТИР, КОТОРЫЙ МОЖНО ИЗМЕНИТЬ</span><h3>{formatNumber(suggestion.target_avg_damage) + ' среднего урона за ' + suggestion.window + ' боёв'}</h3>
       <p>{'Основа: ' + formatNumber(suggestion.baseline_avg_damage, 1) + ' в ' + suggestion.samples + ' известных боях. Прибавка 5%, округление вверх до 50. Это простая эвристика, не прогноз успеха.'}</p></div>
-      {onSaveGoal ? !confirm ? <button type="button" disabled={busy} onClick={() => setConfirm(true)}>Рассмотреть цель</button>
+      {onSaveGoal ? !confirm ? <Button type="button" disabled={busy} onClick={() => setConfirm(true)}>Рассмотреть цель</Button>
         : <div className="goal-confirmation" role="group" aria-label="Подтверждение предлагаемой цели"><p>Сохранить этот ориентир для выбранной машины? Цель с таким же окном будет заменена.</p><div>
-          <button type="button" className="primary-button" disabled={busy} onClick={() => { onSaveGoal({ vehicle: suggestion.vehicle, window: suggestion.window, target_avg_damage: suggestion.target_avg_damage }); setConfirm(false); }}>Сохранить эту цель</button>
-          <button type="button" disabled={busy} onClick={() => setConfirm(false)}>Отмена</button></div></div>
+          <Button type="button" className="primary-button" disabled={busy} onClick={() => { onSaveGoal({ vehicle: suggestion.vehicle, window: suggestion.window, target_avg_damage: suggestion.target_avg_damage }); setConfirm(false); }}>Сохранить эту цель</Button>
+          <Button type="button" disabled={busy} onClick={() => setConfirm(false)}>Отмена</Button></div></div>
         : <p className="muted small">Этот источник доступен только для чтения. Цель не сохранена.</p>}
     </section>}
     <p className="chart-footnote">Наблюдения описывают полученные значения. Состав боёв и условия не контролируются; причинные выводы о навыке не делаются.</p>

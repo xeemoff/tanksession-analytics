@@ -206,6 +206,7 @@ jobs:
           "$PYTHON2" -m unittest discover -s tests -p test_vehicle_identity.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_identity_integration.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_optional_metrics.py -v
+          "$PYTHON2" -m unittest discover -s tests -p test_additional_xp.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_metadata.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_analytics_v2.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_recovery_limits.py -v

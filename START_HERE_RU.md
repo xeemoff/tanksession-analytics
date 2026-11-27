@@ -1,10 +1,10 @@
-# Быстрый старт — TankSession Analytics 2.0.0-rc1
+# Быстрый старт — TankSession Analytics 2.0.0-rc2
 
-**Это кандидат для испытаний на клиенте 1.46.0.0.** Новые возможности ещё не проверены на этой сборке в реальной игре. Предыдущие результаты rc4–rc8 описаны в [протоколе](docs/CLIENT_VALIDATION_RU.md).
+**Это кандидат с исправлениями по испытанию RC1 на клиенте 1.46.0.0.** В RC1 работали установка, окно и запись боя; сохранение настроек, прокрутка, часть вёрстки и опыт после дополнительного бонуса выявили ошибки. RC2 нужно проверить заново. Наблюдения и точный хеш RC1 сохранены в [протоколе](docs/CLIENT_VALIDATION_RU.md).
 
 ## Обновить установленный мод
 
-1. Закрой игру. Скачай [Windows-архив 2.0.0-rc1](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc1/TankSession_Analytics_2.0.0-rc1_Windows.zip) со [страницы выпуска](https://github.com/xeemoff/tanksession-analytics/releases/tag/v2.0.0-rc1) и распакуй весь архив.
+1. Закрой игру. Скачай [Windows-архив 2.0.0-rc2](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc2/TankSession_Analytics_2.0.0-rc2_Windows.zip) со [страницы выпуска](https://github.com/xeemoff/tanksession-analytics/releases/tag/v2.0.0-rc2) и распакуй весь архив.
 2. Запусти **manager.cmd**, найди или выбери папку игры, проверь точную версию клиента и нажми «Установить / обновить». Например: `C:/Games/Tanki` и `1.46.0.0`. Установщик проверит файл, сохранит прежний пакет и выполнит замену.
 
 **Не удаляй `mods/configs/tanksession_analytics/`: это история и настройки.** Python и Node.js для готового установочного архива не нужны. Старые настройки сохранятся. При ручной установке оставь одну версию TankSession в `mods/<версия клиента>/`. [Полная инструкция, проверка без установки и откат](docs/INSTALL_RU.md).
@@ -12,6 +12,8 @@
 При первой установке для окна ангара нужны отдельно OpenWG Gameface и настройка `experimental_gameface_ui: true`. Загрузчик не входит в архив. Окно открывается **F8** из ангара. Подключение описано в [GAMEFACE_RU.md](docs/GAMEFACE_RU.md); восстановление через кэш и дополнительный UI по умолчанию выключены.
 
 ## Что посмотреть после открытия
+
+Сначала проверь два прежних сбоя: сохрани высокий контраст в настройках и открой окно повторно; затем прокрути длинный раздел вниз и вверх. История должна остаться доступной, выбранный контраст — сохраниться, направление колеса — соответствовать движению. Следом проверяются полный перезапуск и цель. [Порядок приёмки RC2](docs/CHECK_CLIENT_RU.md).
 
 - **История:** листай по пять боёв и открывай детали. Старые записи могут не содержать новых метрик; прочерк означает отсутствие данных.
 - **Сводка:** исходы, помощь, доступные дополнительные метрики и сессии. Сессия разделяется паузой от 60 минут между получениями результатов, а не фактическими стартами боёв.
@@ -26,7 +28,7 @@
 
 ## Посмотреть в браузере без установки в игру
 
-Скачай и распакуй [Preview-архив 2.0.0-rc1](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc1/TankSession_Analytics_2.0.0-rc1_Preview.zip). Нужны Python 3.9+ и браузер. Запусти **demo_hangar.cmd** или:
+Скачай и распакуй [Preview-архив 2.0.0-rc2](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc2/TankSession_Analytics_2.0.0-rc2_Preview.zip). Нужны Python 3.9+ и браузер. Запусти **demo_hangar.cmd** или:
 
 ```powershell
 python tools/preview_ui.py --demo
@@ -59,7 +61,7 @@ python tools/preview_ui.py --data "D:/your-folder/battles.jsonl" --account "ID_�
 | История | `mods/configs/tanksession_analytics/battles.jsonl` |
 | Ожидания результата | `battles.jsonl.pending.jsonl` рядом с историей |
 | Прежние настройки интеграции | `settings.json` рядом с историей |
-| Личный вид и цели | Подпапка `profiles/`, отдельный JSON для аккаунта и предыдущая копия `.bak` |
+| Личный вид и цели | Подпапка `profiles/`, отдельный JSON для аккаунта, предыдущая копия `.bak`; после прерывания могут оставаться файлы восстановления `.rollback` |
 | Экспорт | Подпапка `exports/`, отдельный CSV для каждого запроса |
 | Прежние пакеты при обновлении | `mods/tanksession_backups/` |
 | Автоматические снимки истории и настроек | `mods/tanksession_data_backups/` |
@@ -106,4 +108,4 @@ python tools/maintain_data.py --data "D:/your-folder/battles.jsonl"
 
 Последняя команда только проверяет журнал. Для компактирования добавь `--compact`, предварительно закрыв игру и панели; исходные байты сохраняются в резервную копию.
 
-[Изменения 2.0.0-rc1](docs/releases/v2.0.0-rc1.md) · [Архитектура](docs/ARCHITECTURE_RU.md) · [Подготовка выпуска](docs/RELEASE_RU.md)
+[Изменения 2.0.0-rc2](docs/releases/v2.0.0-rc2.md) · [Архитектура](docs/ARCHITECTURE_RU.md) · [Подготовка выпуска](docs/RELEASE_RU.md)

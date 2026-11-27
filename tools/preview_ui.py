@@ -10,6 +10,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlsplit
@@ -28,6 +29,8 @@ ASSETS = {
     '/app.css': ('app.css', 'text/css; charset=utf-8'),
     '/THIRD_PARTY_LICENSES.txt': ('THIRD_PARTY_LICENSES.txt', 'text/plain; charset=utf-8'),
 }
+MAX_COMMAND_BYTES = 16384
+REQUEST_TIMEOUT_SECONDS = 10
 
 
 def create_ui_server(data_path, account_id, goals=None, demo=False,
@@ -54,21 +57,23 @@ def create_ui_server(data_path, account_id, goals=None, demo=False,
     journal = CachedJournal(os.path.abspath(data_path))
     goals = validate_goals([] if goals is None else goals)
     temporary = tempfile.TemporaryDirectory(prefix='tanksession-demo-') if demo else None
-    workspace = Workspace(temporary.name if temporary else os.path.dirname(os.path.abspath(data_path)),
-                          memory=demo)
     writable = demo or allow_write
+    workspace = Workspace(temporary.name if temporary else os.path.dirname(os.path.abspath(data_path)),
+                          memory=demo, read_only=not writable)
 
     class Handler(BaseHTTPRequestHandler):
         def setup(self):
             super().setup()
-            self.connection.settimeout(10)
+            self.connection.settimeout(REQUEST_TIMEOUT_SECONDS)
 
         def log_message(self, format, *args):
             # Do not log URLs, account identifiers or local filesystem paths.
             pass
 
         def respond(self, status, data, content_type):
+            self.close_connection = True
             self.send_response(status)
+            self.send_header('Connection', 'close')
             self.send_header('Content-Type', content_type)
             self.send_header('Content-Length', str(len(data)))
             self.send_header('Cache-Control', 'no-store')
@@ -115,7 +120,48 @@ def create_ui_server(data_path, account_id, goals=None, demo=False,
                 return
             self.json_response(200, snapshot)
 
+        def command_body(self):
+            lengths = self.headers.get_all('Content-Length', [])
+            if (len(lengths) != 1 or not lengths[0].isascii() or not lengths[0].isdigit()
+                    or len(lengths[0]) > 5):
+                raise ValueError('Ambiguous or missing command length')
+            length = int(lengths[0])
+            if not 1 <= length <= MAX_COMMAND_BYTES:
+                raise ValueError('Oversized command')
+            chunks = []
+            remaining = length
+            deadline = time.monotonic() + REQUEST_TIMEOUT_SECONDS
+            try:
+                while remaining:
+                    timeout = deadline - time.monotonic()
+                    if timeout <= 0:
+                        raise TimeoutError('Command body timed out')
+                    self.connection.settimeout(timeout)
+                    # read1 performs at most one socket read. A trickle of
+                    # bytes cannot restart the full timeout for every read.
+                    chunk = self.rfile.read1(remaining)
+                    if not chunk:
+                        raise ValueError('Incomplete command')
+                    chunks.append(chunk)
+                    remaining -= len(chunk)
+            finally:
+                self.connection.settimeout(REQUEST_TIMEOUT_SECONDS)
+            return b''.join(chunks)
+
         def do_POST(self):
+            # HTTP/1.0 closes this connection after its response. Consume a
+            # small, unambiguously framed body before any early rejection;
+            # closing with body bytes in flight can reset the TCP connection
+            # and erase the 403 response on Windows (RFC 9112 section 9.6).
+            # Unknown/oversized framing is closed without unbounded draining.
+            if self.headers.get('Transfer-Encoding') is not None:
+                self.json_response(403, {'error': 'command_rejected'})
+                return
+            try:
+                raw = self.command_body()
+            except (ValueError, TypeError, UnicodeError, OSError):
+                self.json_response(400, {'error': 'invalid_request'})
+                return
             if not self.valid_origin():
                 return
             if self.path != '/api/command':
@@ -124,17 +170,10 @@ def create_ui_server(data_path, account_id, goals=None, demo=False,
             # An unrelated webpage cannot send this non-simple request: no
             # CORS headers or OPTIONS endpoint are provided by this server.
             if (self.headers.get('X-TankSession-Request') != '1' or
-                    self.headers.get_content_type() != 'application/json' or
-                    self.headers.get('Transfer-Encoding') is not None):
+                    self.headers.get_content_type() != 'application/json'):
                 self.json_response(403, {'error': 'command_rejected'})
                 return
             try:
-                length = int(self.headers.get('Content-Length', '-1'))
-                if not 1 <= length <= 16384:
-                    raise ValueError('Oversized command')
-                raw = self.rfile.read(length)
-                if len(raw) != length:
-                    raise ValueError('Incomplete command')
                 request = decode_request({'payload': raw})
                 if request.get('action') in MUTATIONS and not writable:
                     self.json_response(403, {'error': 'read_only'})

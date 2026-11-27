@@ -94,6 +94,119 @@ class WindowsManagerTests(ReleaseFixture):
         self.assertEqual(self.history.read_bytes(), before)
         self.assertTrue((Path(result['Backup']) / 'backup-manifest.json').is_file())
 
+    def test_install_snapshot_preserves_interrupted_profile_and_backup(self):
+        profile = hashlib.sha256(b'synthetic-account').hexdigest() + '.json'
+        profiles = self.data / 'profiles'
+        profiles.mkdir()
+        raw = json.dumps({'version': 2, 'preferences': {'vehicle': '', 'window': 10,
+                          'tab': 'progress', 'density': 'normal', 'contrast': 'high'},
+                          'goals': None}).encode('utf-8')
+        for suffix in ('.rollback', '.bak.rollback'):
+            (profiles / (profile + suffix)).write_bytes(raw)
+        result = json.loads(self.good('Install-TankSessionBundle %s %s %s | ConvertTo-Json -Compress' %
+                                      (self.q(self.installer), self.q(self.game), self.q(self.client))))
+        with zipfile.ZipFile(result['HistoryBackup']) as archive:
+            self.assertEqual(set(archive.namelist()), {'battles.jsonl', 'history-manifest.json',
+                             'profiles/' + profile + '.rollback', 'profiles/' + profile + '.bak.rollback'})
+            self.assertEqual(archive.read('profiles/' + profile + '.rollback'), raw)
+            self.assertEqual(archive.read('profiles/' + profile + '.bak.rollback'), raw)
+        self.assertFalse((profiles / profile).exists())
+        self.assertEqual((profiles / (profile + '.rollback')).read_bytes(), raw)
+
+    def test_interrupted_profile_export_import_retains_recoverable_bytes(self):
+        profile = hashlib.sha256(b'synthetic-account').hexdigest() + '.json'
+        profiles = self.data / 'profiles'
+        profiles.mkdir()
+        raw = json.dumps({'version': 2, 'preferences': {'vehicle': '', 'window': 10,
+                          'tab': 'progress', 'density': 'normal', 'contrast': 'high'},
+                          'goals': None}).encode('utf-8')
+        files = {profile + '.rollback': raw, profile + '.bak.rollback': raw}
+        for name, data in files.items():
+            (profiles / name).write_bytes(data)
+        # Temporary files and arbitrary extra suffixes are never transferable.
+        for name in (profile + '.rollback.tmp', profile + '.bak.rollback.rollback', '.tsa-new.tmp'):
+            (profiles / name).write_bytes(b'private temporary sentinel')
+        archive = self.root / 'interrupted profile.zip'
+        self.export(archive)
+        with zipfile.ZipFile(archive) as saved:
+            self.assertEqual(set(saved.namelist()), {'battles.jsonl', 'history-manifest.json'} |
+                             {'profiles/' + name for name in files})
+        for name in files:
+            (profiles / name).unlink()
+        self.good('Import-TankSessionHistory %s %s | ConvertTo-Json -Compress' %
+                  (self.q(self.game), self.q(archive)))
+        for name, data in files.items():
+            self.assertEqual((profiles / name).read_bytes(), data)
+        self.assertFalse((profiles / profile).exists())
+        runtime_root = Path(__file__).resolve().parents[1] / 'src/res/scripts/client/gui/mods'
+        sys.path.insert(0, str(runtime_root))
+        from tanksession_analytics.workspace import Workspace
+        workspace = Workspace(str(self.data))
+        result = workspace.snapshot([], 'synthetic-account', {'protocol': 1, 'request_id': 'restart',
+                                    'vehicle': '', 'window': 10, 'action': 'initialize'}, now=1700000999)
+        self.assertTrue(result['workspace']['can_edit'])
+        self.assertEqual(result['workspace']['preferences']['contrast'], 'high')
+        self.assertEqual((profiles / profile).read_bytes(), raw)
+        self.assertFalse((profiles / (profile + '.rollback')).exists())
+
+    def test_profile_archive_names_accept_only_the_four_bounded_forms(self):
+        profile = 'profiles/' + 'a' * 64 + '.json'
+        allowed = [profile, profile + '.bak', profile + '.rollback', profile + '.bak.rollback']
+        rejected = [profile + '.tmp', profile + '.rollback.bak', profile + '.rollback.rollback',
+                    profile + '.bak.bak', profile + '\n', profile.replace('profiles/', 'profiles/../'),
+                    profile.replace('a' * 64, 'a' * 63), profile.replace('a' * 64, 'A' * 64)]
+        expressions = ','.join('(Test-TankSessionDataName %s)' % self.q(name) for name in allowed + rejected)
+        result = json.loads(self.good('@(%s) | ConvertTo-Json -Compress' % expressions))
+        self.assertEqual(result, [True] * len(allowed) + [False] * len(rejected))
+
+    def test_rollback_only_import_refuses_an_existing_corresponding_main_before_writes(self):
+        profile = 'a' * 64 + '.json'
+        profiles = self.data / 'profiles'
+        profiles.mkdir()
+        before_history = self.history.read_bytes()
+        for suffix in ('', '.bak'):
+            main = profiles / (profile + suffix)
+            main.write_bytes(b'existing main must not disappear')
+            rollback = profiles / (profile + suffix + '.rollback')
+            rollback.write_bytes(b'existing recovery must not disappear')
+            archive = self.root / ('conflicting' + suffix + '.zip')
+            self.make_archive(archive, {'profiles/' + rollback.name: b'imported recovery'})
+            result = self.ps('Import-TankSessionHistory %s %s' % (self.q(self.game), self.q(archive)))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('.rollback', result.stdout)
+            self.assertEqual(main.read_bytes(), b'existing main must not disappear')
+            self.assertEqual(rollback.read_bytes(), b'existing recovery must not disappear')
+            self.assertEqual(self.history.read_bytes(), before_history)
+            self.assertFalse((self.game / 'mods/tanksession_data_backups').exists())
+            self.assertFalse(list((self.game / 'mods').glob('.tanksession-import-*')))
+            main.unlink()
+            rollback.unlink()
+
+    def test_recovery_import_checks_only_its_exact_main_and_allows_complete_snapshot(self):
+        profile = 'a' * 64 + '.json'
+        profiles = self.data / 'profiles'
+        profiles.mkdir()
+        for index, (main_suffix, recovery_suffix) in enumerate((('', '.bak.rollback'), ('.bak', '.rollback'))):
+            main = profiles / (profile + main_suffix)
+            main.write_bytes(b'unrelated current profile file')
+            recovery_name = profile + recovery_suffix
+            archive = self.root / ('nonconflicting%d.zip' % index)
+            self.make_archive(archive, {'profiles/' + recovery_name: b'imported recovery'})
+            self.good('Import-TankSessionHistory %s %s | ConvertTo-Json -Compress' %
+                      (self.q(self.game), self.q(archive)))
+            self.assertEqual(main.read_bytes(), b'unrelated current profile file')
+            self.assertEqual((profiles / recovery_name).read_bytes(), b'imported recovery')
+            main.unlink()
+            (profiles / recovery_name).unlink()
+        (profiles / profile).write_bytes(b'current profile')
+        archive = self.root / 'complete profile snapshot.zip'
+        self.make_archive(archive, {'profiles/' + profile: b'imported main',
+                                   'profiles/' + profile + '.rollback': b'imported recovery'})
+        self.good('Import-TankSessionHistory %s %s | ConvertTo-Json -Compress' %
+                  (self.q(self.game), self.q(archive)))
+        self.assertEqual((profiles / profile).read_bytes(), b'imported main')
+        self.assertEqual((profiles / (profile + '.rollback')).read_bytes(), b'imported recovery')
+
     def test_uninstall_and_restore_preserve_history_and_other_mods(self):
         before = self.history.read_bytes()
         result = json.loads(self.good('Set-TankSessionPackages %s %s %s | ConvertTo-Json -Compress' %
