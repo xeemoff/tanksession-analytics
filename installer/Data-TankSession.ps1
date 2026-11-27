@@ -1,5 +1,6 @@
 ﻿#requires -Version 5.1
 # Offline, snapshot-based history transfer. Dot-source Install-TankSession.ps1 first.
+Add-Type -AssemblyName System.IO.Compression
 
 function Test-TankSessionDataName([string]$Name) {
     return ($Name -cin @('battles.jsonl', 'settings.json', 'goals.json')) -or

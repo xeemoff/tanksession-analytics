@@ -83,7 +83,7 @@ class WindowsManagerTests(ReleaseFixture):
         empty.mkdir()
         result = self.good('@(Find-TankSessionGames @(%s, %s, %s)) | ConvertTo-Json -Compress' %
                            (self.q(self.game), self.q(empty), self.q(self.game)))
-        self.assertEqual(json.loads(result), str(self.game))
+        self.assertTrue(Path(json.loads(result)).samefile(self.game))
 
     def test_install_automatically_backs_up_history(self):
         before = self.history.read_bytes()
@@ -156,9 +156,9 @@ class WindowsManagerTests(ReleaseFixture):
         self.make_archive(archive, {'battles.jsonl': b'imported sentinel\n'})
         body = ("$script:originalHash=${function:Get-TankSessionHash}; "
                 "function Get-TankSessionHash([string]$Path) { "
-                "if ($Path -eq %s -and [IO.File]::ReadAllText($Path).Contains('imported sentinel')) { return ('0'*64) }; "
+                "if ($Path.EndsWith('\\configs\\tanksession_analytics\\battles.jsonl') -and [IO.File]::ReadAllText($Path).Contains('imported sentinel')) { return ('0'*64) }; "
                 "return & $script:originalHash $Path }; Import-TankSessionHistory %s %s") % (
-                    self.q(self.history), self.q(self.game), self.q(archive))
+                    self.q(self.game), self.q(archive))
         result = self.ps(body)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.history.read_bytes(), before)
