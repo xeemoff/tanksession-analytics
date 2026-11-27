@@ -161,7 +161,7 @@ class WindowsManagerTests(ReleaseFixture):
                     self.q(self.game), self.q(archive))
         result = self.ps(body)
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(self.history.read_bytes(), before)
+        self.assertEqual(self.history.read_bytes(), before, (result.stdout, result.stderr))
         self.assertEqual(len(list((self.game / 'mods/tanksession_data_backups').glob('*.zip'))), 1)
 
     def test_export_does_not_overwrite_an_existing_archive(self):

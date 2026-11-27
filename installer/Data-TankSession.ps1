@@ -2,6 +2,23 @@
 # Offline, snapshot-based history transfer. Dot-source Install-TankSession.ps1 first.
 Add-Type -AssemblyName System.IO.Compression
 
+function Get-TankSessionEntryHash($Entry) {
+    # ZIP directory lengths are untrusted: count actual inflated bytes too.
+    $input = $Entry.Open(); $hasher = [Security.Cryptography.SHA256]::Create()
+    try {
+        $buffer = New-Object byte[] 81920
+        [long]$total = 0
+        while (($count = $input.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            $total += $count
+            if ($total -gt $Entry.Length) { throw 'Распакованный размер отличается от заголовка ZIP.' }
+            $null = $hasher.TransformBlock($buffer, 0, $count, $buffer, 0)
+        }
+        if ($total -ne $Entry.Length) { throw 'Неполный файл внутри архива истории.' }
+        $null = $hasher.TransformFinalBlock((New-Object byte[] 0), 0, 0)
+        return [BitConverter]::ToString($hasher.Hash).Replace('-', '').ToLowerInvariant()
+    } finally { $hasher.Dispose(); $input.Dispose() }
+}
+
 function Test-TankSessionDataName([string]$Name) {
     return ($Name -cin @('battles.jsonl', 'settings.json', 'goals.json')) -or
         ($Name -cmatch '^profiles/[0-9a-f]{64}\.json$')
@@ -111,8 +128,16 @@ function Read-TankSessionHistoryArchive([string]$ArchivePath, [string]$Staging =
         if ($archive.Entries.Count -lt 2 -or $archive.Entries.Count -gt 513) { throw 'Неверный состав архива истории.' }
         $manifestEntry = $archive.GetEntry('history-manifest.json')
         if ($null -eq $manifestEntry -or $manifestEntry.Length -gt 131072) { throw 'Нет допустимого манифеста истории.' }
-        $reader = New-Object IO.StreamReader ($manifestEntry.Open()), ([Text.Encoding]::UTF8), $true
-        try { $manifest = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
+        $input = $manifestEntry.Open(); $memory = New-Object IO.MemoryStream
+        try {
+            $buffer = New-Object byte[] 8192
+            while (($count = $input.Read($buffer, 0, $buffer.Length)) -gt 0) {
+                if ($memory.Length + $count -gt 131072) { throw 'Манифест превышает лимит размера.' }
+                $memory.Write($buffer, 0, $count)
+            }
+            $utf8 = New-Object Text.UTF8Encoding $false, $true
+            $manifest = $utf8.GetString($memory.ToArray()) | ConvertFrom-Json
+        } finally { $input.Dispose(); $memory.Dispose() }
         if ($manifest.schema -ne 1 -or $manifest.kind -cne 'tanksession-history') { throw 'Неизвестный формат истории.' }
         $expected = @{}
         [long]$expanded = 0
@@ -137,12 +162,7 @@ function Read-TankSessionHistoryArchive([string]$ArchivePath, [string]$Staging =
             if ($name -ceq 'history-manifest.json') { continue }
             if (-not (Test-TankSessionDataName $name) -or -not $expected.ContainsKey($name) -or
                 $entry.Length -ne $expected[$name].size) { throw 'Небезопасный путь или размер в архиве истории.' }
-            $input = $entry.Open()
-            try {
-                $hasher = [Security.Cryptography.SHA256]::Create()
-                try { $digest = [BitConverter]::ToString($hasher.ComputeHash($input)).Replace('-', '').ToLowerInvariant() }
-                finally { $hasher.Dispose() }
-            } finally { $input.Dispose() }
+            $digest = Get-TankSessionEntryHash $entry
             if ($digest -cne $expected[$name].sha256) { throw 'SHA-256 файла истории не совпадает.' }
             if (-not [string]::IsNullOrEmpty($Staging)) {
                 $destination = Join-Path $Staging ($name.Replace('/', [IO.Path]::DirectorySeparatorChar))
@@ -176,6 +196,10 @@ function Import-TankSessionHistory([string]$GameRoot, [string]$ArchivePath) {
             $backup = (New-TankSessionBackupPath $GameRoot 'data') + '.zip'
             $null = Export-TankSessionHistory $GameRoot $backup
         }
+        $before = @{}
+        if ($backup) {
+            foreach ($file in @((Read-TankSessionHistoryArchive $backup).files)) { $before[$file.path] = $file.sha256 }
+        }
         # A verified old snapshot exists before any destination can be replaced.
         $rollback = Join-Path $stage '_rollback'
         $null = New-Item -ItemType Directory -Path $rollback
@@ -192,9 +216,15 @@ function Import-TankSessionHistory([string]$GameRoot, [string]$ArchivePath) {
             if (Test-Path -LiteralPath $destination) {
                 Assert-TankSessionRegularPath $destination
                 if (-not (Test-Path -LiteralPath $destination -PathType Leaf)) { throw 'Файл истории перекрыт каталогом.' }
+                if (-not $before.ContainsKey($member.path) -or (Get-TankSessionHash $destination) -cne $before[$member.path]) {
+                    throw 'История изменилась после резервирования. Закройте игру и просмотр истории.'
+                }
                 $previous = Join-Path $rollback ([Guid]::NewGuid().ToString('N'))
                 [IO.File]::Replace((Join-Path $stage $relative), $destination, $previous)
-            } else { [IO.File]::Move((Join-Path $stage $relative), $destination) }
+            } else {
+                if ($before.ContainsKey($member.path)) { throw 'Файл истории удалён во время импорта.' }
+                [IO.File]::Move((Join-Path $stage $relative), $destination)
+            }
             $applied += [PSCustomObject]@{ Destination = $destination; Previous = $previous }
             if ((Get-TankSessionHash $destination) -cne $member.sha256) { throw 'Не совпала проверка установленной истории.' }
         }
@@ -204,7 +234,13 @@ function Import-TankSessionHistory([string]$GameRoot, [string]$ArchivePath) {
         for ($i = $applied.Count - 1; $i -ge 0; $i--) {
             try {
                 $item = $applied[$i]
-                if ($null -ne $item.Previous) { [IO.File]::Replace($item.Previous, $item.Destination, $null) }
+                if ($null -ne $item.Previous) {
+                    # Windows PowerShell can coerce a null string argument to
+                    # an empty backup path. Use a real staging path instead.
+                    $discard = Join-Path $rollback ([Guid]::NewGuid().ToString('N'))
+                    [IO.File]::Replace($item.Previous, $item.Destination, $discard)
+                    [IO.File]::Delete($discard)
+                }
                 else { [IO.File]::Delete($item.Destination) }
             } catch { $failed = $true }
         }

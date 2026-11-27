@@ -6,6 +6,7 @@ function Find-TankSessionGames([string[]]$Candidates = @()) {
     $paths = @($Candidates)
     if ($paths.Count -eq 0) {
         foreach ($drive in @(Get-PSDrive -PSProvider FileSystem)) {
+            if ($drive.Root -notmatch '^[A-Za-z]:\\$') { continue }
             foreach ($relative in @('Games\Tanki', 'Games\Mir_tankov', 'Games\World_of_Tanks', 'Tanki', 'Lesta\Mir_Tankov')) {
                 $paths += Join-Path $drive.Root $relative
             }
@@ -48,7 +49,9 @@ function Get-TankSessionPackageBackups([string]$GameRoot, [string]$Version) {
 
 function Read-TankSessionPackageBackup([string]$GameRoot, [string]$Version, [string]$Backup) {
     Assert-TankSessionRegularPath $Backup
-    $root = [IO.Path]::GetFullPath((Join-Path (Join-Path $GameRoot 'mods') 'tanksession_backups')).TrimEnd('\') + '\'
+    $backupRoot = Join-Path (Join-Path $GameRoot 'mods') 'tanksession_backups'
+    Assert-TankSessionRegularPath $backupRoot
+    $root = (Get-Item -LiteralPath $backupRoot).FullName.TrimEnd('\') + '\'
     $path = (Get-Item -LiteralPath $Backup).FullName
     if (-not $path.StartsWith($root, [StringComparison]::OrdinalIgnoreCase) -or
         [IO.Path]::GetDirectoryName($path).TrimEnd('\') -ine $root.TrimEnd('\')) { throw 'Выберите копию из папки tanksession_backups этой игры.' }
@@ -112,8 +115,8 @@ function Set-TankSessionPackages([string]$Directory, [string]$GameRoot, [string]
             foreach ($file in @($source.files)) {
                 $target = Join-Path $destination $file.name
                 if (Test-Path -LiteralPath $target) { throw 'Место восстановления уже занято.' }
-                Copy-Item -LiteralPath (Join-Path $Restore $file.name) -Destination $target
                 $installed += $target
+                Copy-Item -LiteralPath (Join-Path $Restore $file.name) -Destination $target
                 if ((Get-TankSessionHash $target) -cne $file.sha256) { throw 'Не совпала проверка восстановленного пакета.' }
             }
         }
