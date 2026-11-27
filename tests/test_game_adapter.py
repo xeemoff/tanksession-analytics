@@ -255,6 +255,13 @@ class GameAdapterTests(unittest.TestCase):
         self.assertEqual(self.game._store.records[0]['account_id'], '66')
 
     def test_disagreeing_client_identity_sources_pause_collection(self):
+        # The startup diagnostic intentionally contains the local journal path.
+        # Make its collision with both synthetic IDs deterministic instead of
+        # relying on the random TemporaryDirectory name never containing them.
+        folder = os.path.join(self.folder.name, 'identity-path-99-88')
+        os.makedirs(folder)
+        journal_path = os.path.join(folder, 'battles.jsonl')
+        self.game.default_path = lambda: journal_path
         shared = types.ModuleType('gui.shared')
         utils = types.ModuleType('gui.shared.utils')
         utils.getPlayerDatabaseID = lambda: 99
@@ -270,8 +277,15 @@ class GameAdapterTests(unittest.TestCase):
             'personal': {42: {'team': 1, 'damageDealt': 1111, 'xp': 400}},
         })
         self.assertEqual(self.game._store.records, [])
-        self.assertTrue(any('identity sources disagree' in x for x in self.notes))
-        self.assertFalse(any('99' in x for x in self.notes))
+        self.assertEqual([line for line in self.notes if 'identity sources disagree' in line],
+                         ['[TankSession] Account identity sources disagree; collection paused'])
+        startup = '[TankSession] Started; local data path: ' + journal_path
+        self.assertEqual(self.notes.count(startup), 1)
+        # Exempt exactly the expected startup line, never a broad path prefix or
+        # all initialization messages: identity probing may happen during init.
+        diagnostics = [line for line in self.notes if line != startup] + self.errors
+        for identifier in ('88', '99'):
+            self.assertFalse(any(identifier in line for line in diagnostics), diagnostics)
 
     def test_absent_account_stays_absent_instead_of_using_entity_id(self):
         shared = types.ModuleType('gui.shared')

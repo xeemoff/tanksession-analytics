@@ -140,7 +140,7 @@ function Write-TankSessionHistorySnapshot([string]$GameRoot, [string]$ArchivePat
 
 function Read-TankSessionHistoryArchive([string]$ArchivePath, [string]$Staging = '') {
     Assert-TankSessionRegularPath $ArchivePath
-    if ((Get-Item -LiteralPath $ArchivePath).Length -gt 285212672) { throw 'Архив истории слишком велик.' }
+    if ((Get-Item -Force -LiteralPath $ArchivePath).Length -gt 285212672) { throw 'Архив истории слишком велик.' }
     $archive = [IO.Compression.ZipFile]::OpenRead($ArchivePath)
     try {
         if ($archive.Entries.Count -lt 2 -or $archive.Entries.Count -gt 513) { throw 'Неверный состав архива истории.' }

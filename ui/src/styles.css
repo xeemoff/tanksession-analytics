@@ -706,9 +706,9 @@ button { transition: background-color 130ms ease-out, border-color 130ms ease-ou
 }
 
 /* Client 1.46 Gameface: explicit text/state styles and uncompressed scroll content.
-   It does not draw a platform scrollbar; footer arrows remain reachable. */
+   It does not draw a platform scrollbar; labelled footer controls remain reachable. */
 .panel-scroll-buttons { display: flex; flex-direction: row; flex-shrink: 0; align-items: center; margin: 0 16px; }
-.panel-scroll-buttons button { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-shrink: 0; width: 36px; height: 32px; padding: 0; font-size: 20px; line-height: 24px; }
+.panel-scroll-buttons button { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-shrink: 0; min-width: 66px; height: 32px; padding: 0 10px; font-size: 13px; line-height: 20px; white-space: nowrap; }
 .panel-scroll-buttons button + button { margin-left: 6px; }
 .native-gameface .panel-footer { align-items: center; min-height: 48px; padding-top: 6px; padding-bottom: 6px; font-size: 12px; }
 .native-gameface .panel-content { padding-left: 24px; padding-right: 24px; }
@@ -719,6 +719,8 @@ button { transition: background-color 130ms ease-out, border-color 130ms ease-ou
 .native-gameface .economy-totals, .native-gameface .detail-grid,
 .native-gameface .settings-card > * { flex-shrink: 0; }
 .native-gameface .section-heading > div { display: flex; flex-direction: column; min-width: 0; }
+.native-gameface .section-heading > .report-periods { flex-direction: row; flex-shrink: 0; align-items: center; }
+.native-gameface .report-periods button { display: flex; flex-direction: row; flex-shrink: 0; align-items: center; justify-content: center; white-space: nowrap; }
 .native-gameface .section-tabs button { font-size: 14px; min-height: 40px; height: auto; }
 .native-gameface .insight-switch button, .native-gameface .page-controls button,
 .native-gameface .section-heading > button, .native-gameface .history-search > button,

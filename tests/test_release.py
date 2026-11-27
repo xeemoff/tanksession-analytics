@@ -49,6 +49,7 @@ class ReleaseFixture(unittest.TestCase):
         for relative in ('installer/install.cmd', 'installer/Install-TankSession.ps1',
                          'installer/Data-TankSession.ps1', 'installer/Manage-TankSession.ps1',
                          'installer/TankSession-Manager.ps1', 'installer/manager.cmd',
+                         'installer/Start-TankSession.ps1', 'installer/Update-TankSession.ps1',
                          'docs/INSTALL_RU.md', 'docs/release-validation.json', 'LICENSE'):
             destination = self.root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -89,6 +90,7 @@ class ReleaseTests(ReleaseFixture):
                 self.package.name, self.package.name + '.sha256', 'manifest.json',
                 'install.cmd', 'Install-TankSession.ps1', 'INSTALL_RU.md',
                 'Data-TankSession.ps1', 'Manage-TankSession.ps1', 'TankSession-Manager.ps1', 'manager.cmd',
+                'Start-TankSession.ps1', 'Update-TankSession.ps1',
                 'RELEASE_NOTES_RU.md', 'LICENSE',
             })
             manifest = json.loads(archive.read('manifest.json'))

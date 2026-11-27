@@ -61,11 +61,16 @@ test('native transport keeps the history pager below all rows and card counters 
   await page.screenshot({ path: 'test-results/hangar-native-compat-vehicles.png', animations: 'disabled' });
 });
 
-test('native wheel is canceled once, scrolls in the corrected direction and has reachable button and keyboard alternatives', async ({ page }) => {
+for (const legacyGeometry of [false, true]) test('native wheel, text buttons and keys work ' + (legacyGeometry ? 'without clientHeight (pre-1.54)' : 'with modern geometry'), async ({ page }) => {
   await nativeHost(page);
   await page.getByRole('button', { name: 'Отчёты', exact: true }).click();
   const area = page.locator('#panel-content');
-  expect(await area.evaluate(element => element.scrollHeight - element.clientHeight)).toBeGreaterThan(192);
+  if (legacyGeometry) {
+    await area.evaluate(element => Object.defineProperty(element, 'clientHeight', { configurable: true, get: () => undefined }));
+    expect(await area.evaluate(element => element.clientHeight)).toBeUndefined();
+  }
+  const end = await area.evaluate(element => element.scrollHeight - (element as HTMLElement).offsetHeight);
+  expect(end).toBeGreaterThan(96);
   const box = (await area.boundingBox())!;
   await page.mouse.move(box.x + box.width - 16, box.y + box.height / 2);
   await page.mouse.wheel(0, -120);
@@ -73,18 +78,50 @@ test('native wheel is canceled once, scrolls in the corrected direction and has 
   await page.mouse.wheel(0, 120);
   await expect.poll(() => area.evaluate(element => element.scrollTop)).toBe(0);
   const down = page.getByRole('button', { name: 'Прокрутить вниз', exact: true });
+  await expect(down).toHaveText('Вниз');
+  await expect(page.getByRole('button', { name: 'Прокрутить вверх', exact: true })).toHaveText('Вверх');
   await expect(down).toBeInViewport();
   await down.click();
-  await expect.poll(() => area.evaluate(element => element.scrollTop)).toBe(192);
+  await expect.poll(() => area.evaluate(element => element.scrollTop)).toBe(Math.min(192, end));
   await page.getByRole('button', { name: 'Прокрутить вверх', exact: true }).click();
   await expect.poll(() => area.evaluate(element => element.scrollTop)).toBe(0);
   await area.focus();
   await page.keyboard.press('End');
-  await expect.poll(() => area.evaluate(element => element.scrollTop >= element.scrollHeight - element.clientHeight - 1)).toBe(true);
+  await expect.poll(() => area.evaluate(element => element.scrollTop >= element.scrollHeight - (element as HTMLElement).offsetHeight - 1)).toBe(true);
+  const bottom = await area.evaluate(element => element.scrollTop);
+  await page.mouse.move(box.x + box.width - 16, box.y + box.height / 2);
+  await page.mouse.wheel(0, -120);
+  await page.mouse.wheel(0, -120);
+  await expect.poll(() => area.evaluate(element => element.scrollTop)).toBe(bottom);
   await expect(down).toBeInViewport();
-  await page.screenshot({ path: 'test-results/hangar-native-compat-report-bottom.png', animations: 'disabled' });
+  await expect(page.locator('.report-economy')).toBeInViewport({ ratio: 1 });
+  if (legacyGeometry) await page.screenshot({ path: 'test-results/hangar-native-compat-report-bottom.png', animations: 'disabled' });
   await page.keyboard.press('Home');
   await expect.poll(() => area.evaluate(element => element.scrollTop)).toBe(0);
+  await page.mouse.wheel(0, 120);
+  await page.mouse.wheel(0, 120);
+  await expect.poll(() => area.evaluate(element => element.scrollTop)).toBe(0);
+});
+
+test('native report period controls stay in a horizontal row and inside the panel', async ({ page }) => {
+  await nativeHost(page);
+  await page.getByRole('button', { name: 'Отчёты', exact: true }).click();
+  const periods = page.getByRole('group', { name: 'Период отчёта' });
+  for (const width of [1120, 900]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect(periods).toHaveCSS('flex-direction', 'row');
+    const buttons = await periods.getByRole('button').all();
+    const boxes = await Promise.all(buttons.map(button => button.boundingBox()));
+    expect(boxes).toHaveLength(3);
+    for (const box of boxes) {
+      expect(box).not.toBeNull();
+      expect(Math.abs(box!.y - boxes[0]!.y)).toBeLessThan(1);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+    }
+    if (width === 1120) await page.screenshot({ path: 'test-results/hangar-native-compat-report-periods.png', animations: 'disabled' });
+    await buttons[1].click();
+    await expect(buttons[1]).toHaveAttribute('aria-pressed', 'true');
+  }
 });
 
 test('browser demo keeps ordinary positive-down wheel scrolling without native controls', async ({ page }) => {

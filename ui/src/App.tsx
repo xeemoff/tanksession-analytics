@@ -15,7 +15,7 @@ import { ActivityView, AnalyticsView, EconomyView, FeatureUnavailable } from './
 import { ReportsView } from './Reports';
 import { VehicleCard, VehicleCollection } from './VehicleCards';
 import { moduleLabels } from './preferences';
-import { bindPanelWheel, GAMEFACE_SCROLL_STEP, scrollPanel } from './scroll';
+import { bindPanelWheel, GAMEFACE_SCROLL_STEP, handlePanelKey, scrollPanel } from './scroll';
 export { formatNumber } from './format';
 const SECTIONS: Array<{ id: PanelSection; label: string }> = [
   { id: 'progress', label: 'Прогресс' }, { id: 'dynamics', label: 'Динамика и цели' }, { id: 'history', label: 'История боёв' }, { id: 'summary', label: 'Сводка' },
@@ -329,10 +329,7 @@ export default function App() {
         <Button type="button" className="icon-button close" aria-label="Закрыть панель" onClick={() => control.current?.close()}>×</Button></div></header>
     <div className="panel-content" id="panel-content" ref={panelContent} tabIndex={0} role="region" aria-label="Содержимое статистики" onKeyDown={event => {
       if (event.target !== event.currentTarget) return;
-      const area = event.currentTarget;
-      const distance = event.key === 'PageDown' ? area.clientHeight * 0.8 : event.key === 'PageUp' ? -area.clientHeight * 0.8
-        : event.key === 'Home' ? -area.scrollHeight : event.key === 'End' ? area.scrollHeight : 0;
-      if (distance) { event.preventDefault(); scrollPanel(area, distance); }
+      if (handlePanelKey(event.currentTarget, event.key)) event.preventDefault();
     }}><div className="toolbar"><VehiclePicker vehicles={vehicles.current} selected={state.selection.vehicle} disabled={inactive || busy} onSelect={vehicle => choose({ ...state.selection, vehicle })} />
       <div className="period-control"><span className="field-label">ПЕРИОД СРАВНЕНИЯ</span><div className="period-buttons" role="group" aria-label="Размер периода">
         {([10, 30, 100] as WindowSize[]).map(size => <Button key={size} type="button" aria-label={size + ' боёв'} aria-pressed={state.selection.window === size} disabled={inactive || busy}
@@ -358,8 +355,8 @@ export default function App() {
     </div>
     <footer className="panel-footer"><span>{mode === 'demo' ? 'Демонстрация интерфейса · данные вымышлены' : 'Только собственные завершённые бои'}</span>
       {mode === 'gameface' && <div className="panel-scroll-buttons" role="group" aria-label="Прокрутка панели">
-        <Button type="button" aria-label="Прокрутить вверх" aria-controls="panel-content" title="Прокрутить вверх" onClick={() => { if (panelContent.current) scrollPanel(panelContent.current, -GAMEFACE_SCROLL_STEP * 2); }}>↑</Button>
-        <Button type="button" aria-label="Прокрутить вниз" aria-controls="panel-content" title="Прокрутить вниз" onClick={() => { if (panelContent.current) scrollPanel(panelContent.current, GAMEFACE_SCROLL_STEP * 2); }}>↓</Button>
+        <Button type="button" aria-label="Прокрутить вверх" aria-controls="panel-content" title="Прокрутить вверх" onClick={() => { if (panelContent.current) scrollPanel(panelContent.current, -GAMEFACE_SCROLL_STEP * 2); }}>Вверх</Button>
+        <Button type="button" aria-label="Прокрутить вниз" aria-controls="panel-content" title="Прокрутить вниз" onClick={() => { if (panelContent.current) scrollPanel(panelContent.current, GAMEFACE_SCROLL_STEP * 2); }}>Вниз</Button>
       </div>}
       <span>{state.snapshot ? 'Обновлено ' + timeLabel(state.snapshot.updated_at) : 'TankSession Analytics'}</span></footer>
   </div></main>;
