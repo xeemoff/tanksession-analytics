@@ -51,8 +51,9 @@ class AccountGoalTests(unittest.TestCase):
         self.assertEqual(result['status'], 'not_achieved')
 
     def test_demo_goals_match_real_demo_vehicle_labels(self):
-        sample = [json.loads(line) for line in (ROOT / 'sample_data/battles.jsonl').read_text().splitlines()]
-        goals = json.loads((ROOT / 'sample_data/goals.json').read_text())
+        sample = [json.loads(line) for line in
+                  (ROOT / 'sample_data/battles.jsonl').read_text(encoding='utf-8').splitlines()]
+        goals = json.loads((ROOT / 'sample_data/goals.json').read_text(encoding='utf-8'))
         results = evaluate_goals(sample, goals)
         self.assertEqual(len(results), 2)
         self.assertTrue(all(r['account_id'] == 'demo' and r['battles'] == 10 for r in results))

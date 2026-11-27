@@ -156,8 +156,17 @@ class NativePackageExecutionTests(unittest.TestCase):
             self.assertGreater(report['overall']['battles'], 0)
             self.assertEqual(data.read_bytes(), original)
             launcher = extracted / ('native_report.cmd' if os.name == 'nt' else 'native_report.sh')
-            command = ['cmd.exe', '/d', '/c', str(launcher)] if os.name == 'nt' else [str(launcher)]
-            launched = subprocess.run(command + args, cwd=folder, env=environment,
+            if os.name == 'nt':
+                # cmd /s /c removes the command string's outer quotes. Keep an
+                # extra pair around the whole invocation, so the quoted script
+                # path and quoted arguments survive that parsing step. Passing
+                # this as an argv list would apply CRT escaping to cmd syntax.
+                interpreter = subprocess.list2cmdline([environment.get('COMSPEC', 'cmd.exe')])
+                invocation = subprocess.list2cmdline([str(launcher)] + args)
+                command = '%s /d /s /c "%s"' % (interpreter, invocation)
+            else:
+                command = [str(launcher)] + args
+            launched = subprocess.run(command, cwd=folder, env=environment,
                                       capture_output=True, timeout=30)
             self.assertEqual(launched.returncode, 0, launched.stderr.decode('utf-8', 'replace'))
             self.assertEqual(json.loads(launched.stdout)['overall'], report['overall'])

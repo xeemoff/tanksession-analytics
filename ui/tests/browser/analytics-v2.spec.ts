@@ -139,9 +139,9 @@ test('themes, reduced motion and dashboard modules are saved account preferences
 test('history searches and sorts the complete Python journal before pagination', async ({ page, request }) => {
   await page.goto('/?demo=1');
   await page.getByRole('button', { name: 'История боёв', exact: true }).click();
-  const initial = await (await request.get('/api/snapshot?window=10&vehicle=&request_id=v2-initial')).json() as Snapshot;
+  const initial = await (await request.get('/api/snapshot?window=10&vehicle=&page=0&request_id=v2-initial')).json() as Snapshot;
   const query = initial.history[0].map_label || initial.history[0].vehicle_label || initial.history[0].vehicle;
-  const expected = await (await request.get('/api/snapshot?window=10&vehicle=&request_id=v2-search&history_query=' + encodeURIComponent(query) + '&history_sort=damage_desc')).json() as Snapshot;
+  const expected = await (await request.get('/api/snapshot?window=10&vehicle=&page=0&request_id=v2-search&history_query=' + encodeURIComponent(query) + '&history_sort=damage_desc')).json() as Snapshot;
   await page.getByRole('searchbox', { name: 'Поиск по всей истории' }).fill(query);
   await page.getByRole('group', { name: 'Сортировка всей истории' }).getByRole('button', { name: 'Урон', exact: true }).click();
   await expect(page.getByRole('searchbox', { name: 'Поиск по всей истории' })).toHaveValue(query);
