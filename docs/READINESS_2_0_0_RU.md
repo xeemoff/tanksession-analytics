@@ -21,7 +21,22 @@
 
 ## Автоматические проверки
 
-Результат конкретного коммита и ссылки на CI будут записаны после полного прогона итоговой версии. Промежуточный [CI 45961350517](https://github.com/xeemoff/tanksession-analytics/actions/runs/45961350517), коммит `d2ef8200cfd186c292cf8fedb0db860dfbe34d59`, полностью прошёл: в том числе 11 новых Windows manager сценариев и 7 прежних installer сценариев. Он выявил и помог исправить загрузку ZIP-типов в PowerShell и откат после подмены файла. Этот успех не считается результатом ещё изменяемых Python/UI/C++ частей.
+Полный код 2.0 прошёл **все восемь заданий** на коммите `b68c57c0c52ca12d4006cc3ab945d39f8db87e24`: [PR CI 45964411142](https://github.com/xeemoff/tanksession-analytics/actions/runs/45964411142) и [push CI 45964403875](https://github.com/xeemoff/tanksession-analytics/actions/runs/45964403875).
+
+| Проверка | Фактический результат |
+|---|---|
+| Python 3.9/3.12 Ubuntu, 3.12 Windows | Общий suite 446 тестов; Windows: 440 выполнены, 6 явно пропущены; отдельные окружения выполняют соответствующие платформенные сценарии |
+| Windows manager/installer | 14 новых manager-сценариев и 7 прежних installer-сценариев, включая отказ после записи, позднего writer и освобождение lock |
+| React/TypeScript | Typecheck, build, **55/55 Node tests** |
+| Chromium | **21/21 пользовательских сценария** |
+| C++23 Windows и Linux | **19/19 GoogleTests** на каждой платформе |
+| Native adapter/parity/извлечённый ZIP | 26 тестов: Linux выполняет все, Windows — 24 с двумя платформенными skips |
+| ASan/UBSan | **19/19**, обычные настройки Linux CI, без локального отключения leak detection |
+| CPython 2.7.18 | Настоящий runtime, новые suites metadata/analytics/economy, проверка байткода и воспроизводимости `.mtmod`, упаковка Windows |
+
+После этого изменялась только готовность захвата скриншотов: ожидание доступной кнопки и отключение CSS-переходов в снимке. Это не меняет production UI; ошибочный accessible-name locator захвата исправлен перед финальной публикацией. Финальные CI и хеши публикации фиксируются отдельным дополнением.
+
+Промежуточный [CI 45961350517](https://github.com/xeemoff/tanksession-analytics/actions/runs/45961350517), коммит `d2ef8200cfd186c292cf8fedb0db860dfbe34d59`, полностью прошёл: в том числе 11 новых Windows manager сценариев и 7 прежних installer сценариев. Он выявил и помог исправить загрузку ZIP-типов в PowerShell и откат после подмены файла. Этот успех не считается результатом ещё изменяемых Python/UI/C++ частей.
 
 ## Игровая приёмка
 

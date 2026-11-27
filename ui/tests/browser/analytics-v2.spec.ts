@@ -33,7 +33,7 @@ async function serveFixture(page: Page, name = 'analytics_v2') {
 }
 
 async function capture(page: Page, name: string) {
-  await expect(page.getByRole('button', { name: 'Обновить', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Обновить статистику', exact: true })).toBeEnabled();
   await mkdir('test-results', { recursive: true });
   await page.screenshot({ path: 'test-results/hangar-v2-' + name + '.png', fullPage: true, animations: 'disabled' });
 }
