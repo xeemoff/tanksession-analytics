@@ -47,6 +47,8 @@ class ReleaseFixture(unittest.TestCase):
         self.package.with_suffix('.mtmod.sha256').write_text(
             '%s  %s\n' % (self.digest, self.package.name), encoding='ascii')
         for relative in ('installer/install.cmd', 'installer/Install-TankSession.ps1',
+                         'installer/Data-TankSession.ps1', 'installer/Manage-TankSession.ps1',
+                         'installer/TankSession-Manager.ps1', 'installer/manager.cmd',
                          'docs/INSTALL_RU.md', 'docs/release-validation.json', 'LICENSE'):
             destination = self.root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -86,6 +88,7 @@ class ReleaseTests(ReleaseFixture):
             self.assertEqual(set(archive.namelist()), {
                 self.package.name, self.package.name + '.sha256', 'manifest.json',
                 'install.cmd', 'Install-TankSession.ps1', 'INSTALL_RU.md',
+                'Data-TankSession.ps1', 'Manage-TankSession.ps1', 'TankSession-Manager.ps1', 'manager.cmd',
                 'RELEASE_NOTES_RU.md', 'LICENSE',
             })
             manifest = json.loads(archive.read('manifest.json'))
@@ -137,7 +140,8 @@ class ReleaseTests(ReleaseFixture):
             package_release.release_gate('1.0.0', self.digest, broken)
 
     def test_installer_has_utf8_bom_for_windows_powershell_51(self):
-        self.assertTrue((ROOT / 'installer/Install-TankSession.ps1').read_bytes().startswith(b'\xef\xbb\xbf'))
+        for path in (ROOT / 'installer').glob('*.ps1'):
+            self.assertTrue(path.read_bytes().startswith(b'\xef\xbb\xbf'), path.name)
 
 
 @unittest.skipUnless(sys.platform == 'win32' and shutil.which('powershell.exe'),
