@@ -202,7 +202,8 @@ function Get-TankSessionDestination([string]$Path, [string]$Version, $Manifest) 
     return $destination
 }
 
-function Install-TankSessionBundle([string]$Directory, [string]$Path, [string]$Version, [bool]$ValidateOnly = $false) {
+function Install-TankSessionBundle([string]$Directory, [string]$Path, [string]$Version, [bool]$ValidateOnly = $false,
+                                   [scriptblock]$BeforeInstall = $null, [scriptblock]$AfterInstall = $null, $CallbackContext = $null) {
     $manifest = Read-TankSessionBundle $Directory
     $destination = Get-TankSessionDestination $Path $Version $manifest
     if (Test-Path -LiteralPath (Join-Path $destination $manifest.package) -PathType Container) {
@@ -234,6 +235,10 @@ function Install-TankSessionBundle([string]$Directory, [string]$Path, [string]$V
             $_.Name -cmatch '^ru\.tanksession\.analytics_[0-9A-Za-z._-]+\.mtmod$'
         })
         foreach ($old in $oldPackages) { Assert-TankSessionRegularPath $old.FullName }
+        # The updater checks downgrade/concurrent-manager state after taking the
+        # same lock as package replacement. Only trusted, already loaded code
+        # supplies these callbacks; downloaded scripts are never dot-sourced.
+        if ($null -ne $BeforeInstall) { $null = & $BeforeInstall $manifest $destination $CallbackContext }
         if (@(Get-TankSessionDataFiles (Get-TankSessionDataRoot $Path)).Count -gt 0) {
             $historyBackup = (New-TankSessionBackupPath $Path 'data') + '.zip'
             $null = Write-TankSessionHistorySnapshot $Path $historyBackup
@@ -265,6 +270,9 @@ function Install-TankSessionBundle([string]$Directory, [string]$Path, [string]$V
         Move-Item -LiteralPath $temporary -Destination $target
         $installed = $true
         if ((Get-TankSessionHash $target) -cne $manifest.sha256.ToLowerInvariant()) { throw 'Ошибка итоговой проверки.' }
+        # Switching the manager pointer is the last operation. A failed switch
+        # is handled by the same package rollback as any installation failure.
+        if ($null -ne $AfterInstall) { $null = & $AfterInstall $manifest $destination $CallbackContext }
         return [PSCustomObject]@{ Status = 'installed'; Version = $manifest.version; ExistingPackages = $oldPackages.Count; Backup = $backupPath; HistoryBackup = $historyBackup }
     } catch {
         $originalError = $_

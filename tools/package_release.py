@@ -108,7 +108,7 @@ def build_release(package=None, output=None, tag=None, validation_path=None):
         members = [{'path': name, 'size': len(archive.read(name)),
                     'sha256': _digest(archive.read(name))} for name in sorted(archive.namelist())]
     manifest = {
-        'schema': 1, 'id': mod_id, 'version': version,
+        'schema': 1, 'id': mod_id, 'version': version, 'manager_update_protocol': 1,
         'package': package.name, 'package_size': len(data), 'sha256': digest,
         'members': members,
         'channel': compatibility['channel'],
@@ -127,6 +127,8 @@ def build_release(package=None, output=None, tag=None, validation_path=None):
         'Manage-TankSession.ps1': _read_project_file('installer/Manage-TankSession.ps1'),
         'TankSession-Manager.ps1': _read_project_file('installer/TankSession-Manager.ps1'),
         'manager.cmd': _read_project_file('installer/manager.cmd'),
+        'Start-TankSession.ps1': _read_project_file('installer/Start-TankSession.ps1'),
+        'Update-TankSession.ps1': _read_project_file('installer/Update-TankSession.ps1'),
         'INSTALL_RU.md': _read_project_file('docs/INSTALL_RU.md'),
         'RELEASE_NOTES_RU.md': _read_project_file(notes_path),
         'LICENSE': _read_project_file('LICENSE'),

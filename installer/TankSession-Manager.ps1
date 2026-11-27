@@ -1,6 +1,8 @@
 ﻿#requires -Version 5.1
 [CmdletBinding()]
-param([switch]$SmokeTest)
+param([switch]$SmokeTest, [string]$ManagerRoot = $PSScriptRoot,
+      [string]$SelectedGame = '', [string]$SelectedClient = '',
+      [Nullable[bool]]$IncludePreview = $null, [string]$StartupNotice = '')
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -12,6 +14,11 @@ Add-Type -AssemblyName System.Drawing
 $script:TsaBundle = Read-TankSessionBundle $PSScriptRoot
 $script:TsaReleaseUrl = 'https://github.com/xeemoff/tanksession-analytics/releases'
 $script:TsaButtons = @()
+$script:TsaBusy = $false
+$script:TsaRestart = $null
+$script:TsaAvailable = $null
+$script:TsaUpdateButton = $null
+$script:TsaProgressText = ''
 $script:TsaForm = New-Object Windows.Forms.Form
 $script:TsaForm.Text = 'TankSession Analytics — управление'
 $script:TsaForm.Size = New-Object Drawing.Size 860, 780
@@ -23,9 +30,10 @@ $script:TsaForm.AutoScaleMode = [Windows.Forms.AutoScaleMode]::Dpi
 
 $layout = New-Object Windows.Forms.TableLayoutPanel
 $layout.Dock = 'Fill'; $layout.Padding = New-Object Windows.Forms.Padding 22
-$layout.ColumnCount = 1; $layout.RowCount = 9
+$layout.ColumnCount = 1; $layout.RowCount = 10
 $layout.AutoScroll = $true
 $script:TsaForm.Controls.Add($layout)
+$script:TsaForm.Add_FormClosing({ if ($script:TsaBusy) { $_.Cancel = $true } })
 
 function Add-TsaLabel([string]$Text, [bool]$Title = $false) {
     $label = New-Object Windows.Forms.Label
@@ -61,13 +69,20 @@ function Write-TsaStatus([string]$Text) {
 }
 
 function Invoke-TsaAction([scriptblock]$Action) {
+    if ($script:TsaBusy) { return }
+    $script:TsaBusy = $true
     foreach ($button in $script:TsaButtons) { $button.Enabled = $false }
+    $script:TsaPath.Enabled = $false; $script:TsaVersion.Enabled = $false; $script:TsaPreview.Enabled = $false
     $script:TsaForm.UseWaitCursor = $true
     try { & $Action }
     catch { Write-TsaStatus ('Операция остановлена: ' + $_.Exception.Message) }
     finally {
         $script:TsaForm.UseWaitCursor = $false
         foreach ($button in $script:TsaButtons) { $button.Enabled = $true }
+        $script:TsaPath.Enabled = $true; $script:TsaVersion.Enabled = $true; $script:TsaPreview.Enabled = $true
+        if ($null -ne $script:TsaUpdateButton) { $script:TsaUpdateButton.Enabled = $null -ne $script:TsaAvailable }
+        $script:TsaBusy = $false
+        if ($null -ne $script:TsaRestart) { $script:TsaForm.Close() }
     }
 }
 
@@ -88,6 +103,7 @@ Add-TsaLabel ('Клиент: ' + (@($script:TsaBundle.client_versions) -join ', 
 
 $row = New-TsaRow
 $script:TsaPath = New-Object Windows.Forms.ComboBox
+$script:TsaPath.Text = $SelectedGame
 $script:TsaPath.Width = 400; $script:TsaPath.AccessibleName = 'Папка игры'
 $row.Controls.Add($script:TsaPath)
 Add-TsaButton $row 'Выбрать папку…' {
@@ -117,6 +133,7 @@ $script:TsaVersion.Width = 140; $script:TsaVersion.DropDownStyle = 'DropDownList
 $script:TsaVersion.AccessibleName = 'Поддерживаемая версия клиента'
 foreach ($version in @($script:TsaBundle.client_versions)) { $null = $script:TsaVersion.Items.Add($version) }
 $script:TsaVersion.SelectedIndex = 0
+if ($SelectedClient -and $script:TsaVersion.Items.Contains($SelectedClient)) { $script:TsaVersion.SelectedItem = $SelectedClient }
 $row.Controls.Add($script:TsaVersion)
 Add-TsaButton $row 'Проверить' {
     Invoke-TsaAction {
@@ -192,17 +209,44 @@ Add-TsaButton $row 'Обновить список копий' { Invoke-TsaAction
 $row = New-TsaRow
 $script:TsaPreview = New-Object Windows.Forms.CheckBox
 $script:TsaPreview.Text = 'Учитывать предварительные версии'; $script:TsaPreview.AutoSize = $true
-$script:TsaPreview.Checked = $script:TsaBundle.channel -eq 'prerelease'
+$script:TsaPreview.Checked = $(if ($null -ne $IncludePreview) { [bool]$IncludePreview } else { $script:TsaBundle.channel -eq 'prerelease' })
+$script:TsaPreview.Add_CheckedChanged({
+    $script:TsaAvailable = $null
+    if ($null -ne $script:TsaUpdateButton) { $script:TsaUpdateButton.Enabled = $false }
+})
 $row.Controls.Add($script:TsaPreview)
 Add-TsaButton $row 'Проверить обновления' {
     Invoke-TsaAction {
         Write-TsaStatus 'Проверяю опубликованные выпуски на GitHub…'
-        $result = Get-TankSessionUpdate $script:TsaBundle.version $script:TsaPreview.Checked
+        $script:TsaAvailable = $null
+        $result = Get-TankSessionUpdate $script:TsaBundle.version $script:TsaPreview.Checked ${function:Update-TsaDownloadProgress}
+        $script:TsaAvailable = $result.Available
         $script:TsaReleaseUrl = $result.Url
-        Write-TsaStatus $(if ($result.Available) { 'Доступна версия ' + $result.Available + '. Откройте страницу и проверьте её требования к клиенту.' } else { 'Более новая версия в выбранном канале не найдена.' })
+        Write-TsaStatus $(if ($result.Available) { 'Доступна версия ' + $result.Available + '. Нажмите «Скачать и обновить». Совместимость с выбранным клиентом будет проверена до установки.' } else { 'Более новая версия в выбранном канале не найдена.' })
     }
 }
+Add-TsaButton $row 'Скачать и обновить' {
+    Invoke-TsaAction {
+        if (-not $script:TsaAvailable) { throw 'Сначала проверьте обновления.' }
+        $result = Install-TankSessionUpdate $PSScriptRoot $ManagerRoot $script:TsaPath.Text $script:TsaVersion.Text $script:TsaAvailable $script:TsaPreview.Checked ${function:Update-TsaDownloadProgress}
+        Write-TsaStatus ('Обновлено до ' + $result.Version + '. История и настройки сохранены.' +
+            $(if ($result.HistoryBackup) { [Environment]::NewLine + 'Копия данных: ' + $result.HistoryBackup }) +
+            $(if ($result.Backup) { [Environment]::NewLine + 'Прежний пакет: ' + $result.Backup }))
+        $script:TsaRestart = [PSCustomObject]@{ Restart = $true; Version = $result.Version; Game = $script:TsaPath.Text; Client = $script:TsaVersion.Text; IncludePreview = $script:TsaPreview.Checked }
+    }
+}
+$script:TsaUpdateButton = $script:TsaButtons[-1]
+$script:TsaUpdateButton.Enabled = $false
 Add-TsaButton $row 'Страница выпуска' { Start-Process $script:TsaReleaseUrl }
+
+$script:TsaProgress = New-Object Windows.Forms.Label
+$script:TsaProgress.AutoSize = $true; $script:TsaProgress.Text = 'Готов к работе'
+$layout.Controls.Add($script:TsaProgress)
+function Update-TsaDownloadProgress([string]$Stage, [long]$Done, [long]$Total) {
+    $script:TsaProgress.Text = $Stage + $(if ($Total -gt 0) { ' — ' + [Math]::Floor(100 * $Done / $Total) + '%' } else { '…' })
+    if ($Stage -cne $script:TsaProgressText) { Write-TsaStatus ($Stage + '…'); $script:TsaProgressText = $Stage }
+    [Windows.Forms.Application]::DoEvents()
+}
 
 $script:TsaStatus = New-Object Windows.Forms.TextBox
 $script:TsaStatus.Multiline = $true; $script:TsaStatus.ReadOnly = $true
@@ -210,9 +254,12 @@ $script:TsaStatus.ScrollBars = 'Vertical'; $script:TsaStatus.Dock = 'Fill'
 $script:TsaStatus.MinimumSize = New-Object Drawing.Size 680, 120
 $script:TsaStatus.AccessibleName = 'Результаты операций'
 $layout.Controls.Add($script:TsaStatus)
-Write-TsaStatus 'Укажите папку игры или нажмите «Найти игру». Установка и копии работают без интернета; запрос к GitHub выполняется только кнопкой проверки обновлений.'
+Write-TsaStatus 'Укажите папку игры или нажмите «Найти игру». «Проверить обновления» ищет выпуск; «Скачать и обновить» загружает его, проверяет и обновляет мод вместе с менеджером.'
+
+if ($StartupNotice) { Write-TsaStatus $StartupNotice }
 
 if ($SmokeTest) {
-    [PSCustomObject]@{ Title = $script:TsaForm.Text; Buttons = $script:TsaButtons.Count; Client = $script:TsaVersion.Text; Status = 'constructed' } | ConvertTo-Json -Compress
+    [PSCustomObject]@{ Title = $script:TsaForm.Text; Buttons = $script:TsaButtons.Count; Client = $script:TsaVersion.Text; Version = $script:TsaBundle.version; Game = $script:TsaPath.Text; ManagerRoot = $ManagerRoot; IncludePreview = $script:TsaPreview.Checked; Status = 'constructed' } | ConvertTo-Json -Compress
 } else { $null = $script:TsaForm.ShowDialog() }
 $script:TsaForm.Dispose()
+if ($null -ne $script:TsaRestart) { $script:TsaRestart }

@@ -182,9 +182,9 @@ function Select-TankSessionUpdate([object[]]$Releases, [string]$Current, [bool]$
     return [PSCustomObject]@{ Current = $Current; Available = $candidate; Url = $(if ($candidate) { 'https://github.com/xeemoff/tanksession-analytics/releases/tag/v' + $candidate } else { 'https://github.com/xeemoff/tanksession-analytics/releases' }) }
 }
 
-function Get-TankSessionUpdate([string]$Current, [bool]$IncludePrerelease = $false) {
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    $response = Invoke-WebRequest -Uri 'https://api.github.com/repos/xeemoff/tanksession-analytics/releases?per_page=100' -UseBasicParsing -TimeoutSec 15 -MaximumRedirection 0 -Headers @{ 'Accept' = 'application/vnd.github+json'; 'User-Agent' = 'TankSession-Update-Check' }
-    if ($response.RawContentLength -gt 4194304) { throw 'Слишком большой ответ сервиса выпусков.' }
-    return Select-TankSessionUpdate @($response.Content | ConvertFrom-Json) $Current $IncludePrerelease
+function Get-TankSessionUpdate([string]$Current, [bool]$IncludePrerelease = $false, [scriptblock]$Progress = $null) {
+    $response = @(Get-TankSessionReleaseJson '?per_page=100' $Progress)
+    return Select-TankSessionUpdate $response $Current $IncludePrerelease
 }
+
+. (Join-Path $PSScriptRoot 'Update-TankSession.ps1')
