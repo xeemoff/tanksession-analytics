@@ -596,7 +596,7 @@ button { transition: background-color 130ms ease-out, border-color 130ms ease-ou
 .page.theme-light { background: #dce2d8; }
 .panel.theme-light { color: #253c2e; background: #f5f6ef; border-color: #87957e; }
 .theme-light .panel-header, .theme-light .panel-footer, .theme-light .history-head { background: #e7ecdf; border-color: #a6b39c; color: #42543a; }
-.theme-light button, .theme-light .picker-trigger, .theme-light .period-buttons button { color: #30472f; background: #e9eddf; border-color: #98a688; }
+.theme-light button, .theme-light .icon-button.refresh, .theme-light .picker-trigger, .theme-light .period-buttons button { color: #30472f; background: #e9eddf; border-color: #98a688; }
 .theme-light button:hover { background: #dbe3cc; border-color: #617744; }
 .theme-light button.active, .theme-light button[aria-pressed="true"], .theme-light .group-bar-row.selected { color: #4b3510; background: #e9d7af; border-color: #8e692e; }
 .theme-light button:focus, .theme-light input:focus { outline-color: #81591e; }
