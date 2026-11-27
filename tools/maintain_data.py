@@ -47,7 +47,7 @@ def compact(path):
     path = os.path.abspath(path)
     before = os.stat(path)
     store = BattleStore(path)
-    rows = store.records
+    rows = store.compacted_records()
     folder = os.path.dirname(path)
     fd, candidate = tempfile.mkstemp(prefix='.tanksession-', suffix='.tmp', dir=folder)
     try:
@@ -72,7 +72,7 @@ def compact(path):
         if _signature(os.stat(path)) != _signature(before):
             raise RuntimeError('Journal changed during backup; original untouched')
         os.replace(candidate, path)
-        return {'backup': backup, 'records': len(rows), 'bytes': os.path.getsize(path),
+        return {'backup': backup, 'records': len(store.records), 'bytes': os.path.getsize(path),
                 'diagnostics_before': dict(store.diagnostics)}
     finally:
         if os.path.exists(candidate):

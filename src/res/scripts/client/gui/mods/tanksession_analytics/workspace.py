@@ -115,15 +115,25 @@ def validate_command(request, clean):
 
 
 def _replace(source, destination):
-    """Atomic replacement on POSIX and on Windows, including Python 2.7."""
+    """Replace a profile; use recoverable renames on stripped Windows runtimes.
+
+    os.replace / MoveFileExW remain the normal path. The final fallback is a
+    single-writer, recoverable sequence, not one atomic filesystem operation.
+    """
     if hasattr(os, 'replace'):
         os.replace(source, destination)
     elif os.name == 'nt':
-        import ctypes
-        from ctypes import wintypes
-        move = ctypes.windll.kernel32.MoveFileExW
-        move.argtypes = (wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD)
-        move.restype = wintypes.BOOL
+        try:
+            import ctypes
+            from ctypes import wintypes
+            move = ctypes.windll.kernel32.MoveFileExW
+            move.argtypes = (wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD)
+            move.restype = wintypes.BOOL
+        except (ImportError, AttributeError):
+            # The game's embedded Python need not ship ctypes/_ctypes. Do not
+            # require a native extension merely to save a personal profile.
+            _replace_recoverable(source, destination)
+            return
         # Python 2.7's Windows cwd/tempfile paths can be ANSI byte strings.
         # Decode filesystem paths with their native codec, not the UTF-8
         # payload decoder, which would silently replace Cyrillic characters.
@@ -138,6 +148,69 @@ def _replace(source, destination):
         os.rename(source, destination)
 
 
+def _read_profile_bytes(path):
+    """Read and validate one bounded regular profile or its recovery copy."""
+    if (os.path.islink(os.path.dirname(path)) or os.path.islink(path) or
+            not os.path.isfile(path)):
+        raise IOError('Profile is not a regular local file')
+    with open(path, 'rb') as stream:
+        data = stream.read(MAX_PROFILE_BYTES + 1)
+    if len(data) > MAX_PROFILE_BYTES:
+        raise ValueError('UI profile is too large')
+    Workspace._validate_profile(json.loads(data.decode('utf-8-sig')))
+    return data
+
+
+def _recover_replacement(path, cleanup=False):
+    """A present validated destination wins; an absent one restores rollback.
+
+    Only a fully written temporary file is installed at the destination. If
+    both names exist, the second rename committed. Never remove the rollback
+    while the destination is missing, invalid, linked or unreadable. This
+    handles interrupted operations, not simultaneous writers or disk loss.
+    """
+    rollback = path + '.rollback'
+    if os.path.islink(path) or os.path.islink(rollback):
+        raise IOError('Linked profile replacement is not supported')
+    if not os.path.lexists(rollback):
+        return
+    if not os.path.isfile(rollback):
+        raise IOError('Profile rollback is not a regular file')
+    if os.path.lexists(path):
+        _read_profile_bytes(path)
+        if cleanup:
+            os.remove(rollback)
+    else:
+        _read_profile_bytes(rollback)
+        os.rename(rollback, path)
+
+
+def _replace_recoverable(source, destination):
+    """Preserve previous bytes until the replacement rename succeeds."""
+    _recover_replacement(destination, cleanup=True)
+    rollback = destination + '.rollback'
+    previous = os.path.lexists(destination)
+    if previous:
+        _read_profile_bytes(destination)
+        os.rename(destination, rollback)
+    try:
+        os.rename(source, destination)
+    except Exception:
+        # Windows rename never overwrites an existing destination. If another
+        # writer created one, preserve both files instead of discarding either.
+        if previous and not os.path.lexists(destination):
+            os.rename(rollback, destination)
+        raise
+    if previous:
+        try:
+            os.remove(rollback)
+        except OSError:
+            # The new file is already committed. A later write can retry this
+            # cleanup after validating it; reporting write_failed here would
+            # incorrectly claim that the old preferences are still current.
+            pass
+
+
 def _mkdir(path):
     if os.path.islink(path):
         raise IOError('Linked directory is not supported')
@@ -150,10 +223,12 @@ def _mkdir(path):
 
 
 def _write_atomic(path, raw):
+    """Flush a complete profile, then replace it using available capabilities."""
     folder = os.path.dirname(path)
     _mkdir(folder)
     if os.path.islink(path):
         raise IOError('Linked configuration is not supported')
+    _recover_replacement(path, cleanup=True)
     descriptor, temporary = tempfile.mkstemp(prefix='.tsa-', suffix='.tmp', dir=folder)
     try:
         with os.fdopen(descriptor, 'wb') as stream:
@@ -182,11 +257,33 @@ def _csv_cell(value):
 
 
 class Workspace(object):
-    def __init__(self, folder, memory=False):
+    def __init__(self, folder, memory=False, log=None):
         self.folder = os.path.abspath(folder)
         self.memory = memory
         self._profiles = {}
         self._completed = {}
+        self._log = log
+        self._reported = set()
+
+    def _report(self, stage, error):
+        # No exception message, path, account ID or command body is logged.
+        if stage not in MUTATIONS + ('profile_read', 'legacy_goals_read'):
+            return
+        kind = type(error).__name__
+        if kind not in ('ImportError', 'IOError', 'OSError', 'ValueError', 'TypeError',
+                        'AttributeError', 'RuntimeError', 'UnicodeError',
+                        'UnicodeDecodeError', 'UnicodeEncodeError'):
+            kind = 'Error'
+        key = (stage, kind)
+        if not callable(self._log) or key in self._reported:
+            return
+        if len(self._reported) >= 32:
+            return
+        self._reported.add(key)
+        try:
+            self._log('Workspace: ' + stage + ' failed (' + kind + ')')
+        except Exception:
+            pass
 
     def _key(self, account):
         return hashlib.sha256(_as_text(account).encode('utf-8')).hexdigest()
@@ -217,12 +314,10 @@ class Workspace(object):
         path = self._path(account)
         if os.path.islink(os.path.dirname(path)) or os.path.islink(path):
             raise IOError('Linked UI profile is not supported')
+        _recover_replacement(path)
         if not os.path.exists(path):
             return {'version': 2, 'preferences': dict(DEFAULT_PREFERENCES), 'goals': None}
-        with open(path, 'rb') as stream:
-            data = stream.read(MAX_PROFILE_BYTES + 1)
-        if len(data) > MAX_PROFILE_BYTES:
-            raise ValueError('UI profile is too large')
+        data = _read_profile_bytes(path)
         return self._validate_profile(json.loads(data.decode('utf-8-sig')))
 
     def _save(self, account, profile):
@@ -233,6 +328,7 @@ class Workspace(object):
         path = self._path(account)
         folder = os.path.dirname(path)
         _mkdir(folder)
+        _recover_replacement(path)
         if not os.path.exists(path) and len([name for name in os.listdir(folder)
                                            if name.endswith('.json')]) >= MAX_PROFILES:
             raise ValueError('too_many_profiles')
@@ -241,10 +337,7 @@ class Workspace(object):
         if len(raw) > MAX_PROFILE_BYTES:
             raise ValueError('UI profile is too large')
         if os.path.isfile(path):
-            with open(path, 'rb') as stream:
-                previous = stream.read(MAX_PROFILE_BYTES + 1)
-            if len(previous) > MAX_PROFILE_BYTES:
-                raise ValueError('UI profile is too large')
+            previous = _read_profile_bytes(path)
             _write_atomic(path + '.bak', previous)
         _write_atomic(path, raw)
 
@@ -302,7 +395,8 @@ class Workspace(object):
         writable = True
         try:
             profile = self._load(account)
-        except (ValueError, IOError, OSError, UnicodeError, TypeError):
+        except (ValueError, IOError, OSError, UnicodeError, TypeError, ImportError) as error:
+            self._report('profile_read', error)
             profile = {'version': 1, 'preferences': dict(DEFAULT_PREFERENCES), 'goals': None}
             operation = {'status': 'error', 'code': 'read_failed'}
             writable = False
@@ -310,7 +404,8 @@ class Workspace(object):
             try:
                 legacy = legacy_goals() if callable(legacy_goals) else legacy_goals
                 goals = self._visible_goals(legacy, account)
-            except (ValueError, IOError, OSError, UnicodeError, TypeError):
+            except (ValueError, IOError, OSError, UnicodeError, TypeError, ImportError) as error:
+                self._report('legacy_goals_read', error)
                 goals = []
                 operation = {'status': 'error', 'code': 'read_failed'}
                 writable = False
@@ -352,6 +447,7 @@ class Workspace(object):
             fingerprint = request['request_id'] + ':' + json.dumps(request, sort_keys=True)
             operation = completed.get(fingerprint)
             if operation is None:
+                writing_profile = False
                 try:
                     if action == 'export_csv':
                         operation = self._export(records, account, request['vehicle'], observed)
@@ -370,13 +466,17 @@ class Workspace(object):
                             updated['goals'] = validate_goals(new_goals)
                             operation = {'status': 'saved' if action == 'save_goal' else 'deleted',
                                          'code': 'goal_saved' if action == 'save_goal' else 'goal_deleted'}
+                        writing_profile = True
                         self._save(account, updated)
                         profile = updated
                         goals = goals if profile['goals'] is None else profile['goals']
-                except (IOError, OSError, UnicodeError):
+                except (IOError, OSError, UnicodeError, ImportError, AttributeError) as error:
+                    self._report(action, error)
                     operation = {'status': 'error', 'code': 'write_failed'}
-                except (ValueError, TypeError):
-                    operation = {'status': 'error', 'code': 'invalid_goal' if 'goal' in request else 'write_failed'}
+                except (ValueError, TypeError) as error:
+                    self._report(action, error)
+                    invalid_goal = 'goal' in request and not writing_profile
+                    operation = {'status': 'error', 'code': 'invalid_goal' if invalid_goal else 'write_failed'}
                 if len(completed) >= 32:
                     completed.clear()
                 completed[fingerprint] = operation

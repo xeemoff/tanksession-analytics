@@ -3,9 +3,11 @@
 import json
 import os
 
-from .core import _arena_id, _as_text, _non_negative_int, validate_record, record_is_complete
+from .core import (_arena_id, _as_text, _non_negative_int, validate_record,
+                   record_is_complete, MAX_RECORD_INTEGER, long_type)
 from .vehicles import (normalize_vehicle_id, revision_identity,
-                       normalize_vehicle_metadata, VEHICLE_METADATA_FIELDS)
+                       normalize_vehicle_metadata, normalize_vehicle_label,
+                       VEHICLE_METADATA_FIELDS)
 
 _MAX_LINE_BYTES = 262144
 
@@ -111,7 +113,9 @@ class BattleStore(object):
     A later snapshot may fill missing values, never change a known metric.
     Any conflicting known field rejects the whole proposed revision. The first
     observation timestamp is retained; receiving the same result later is not
-    a conflict. Diagnostics describe physical journal lines, not write attempts.
+    a conflict. A separately validated, explicit additional-XP event can raise
+    XP once, retaining its before/delta evidence in the append-only journal.
+    Diagnostics describe physical journal lines, not write attempts.
     """
     def __init__(self, path):
         self.path = os.path.abspath(path)
@@ -119,6 +123,7 @@ class BattleStore(object):
         self.seen = set()
         self.by_arena = {}
         self._index = {}
+        self._xp_adjustments = {}
         self.diagnostics = _diagnostics()
         self.reload()
 
@@ -139,8 +144,22 @@ class BattleStore(object):
         self.seen = set()
         self.by_arena = {}
         self._index = {}
+        self._xp_adjustments = {}
         self.diagnostics = _diagnostics()
         for raw_record in _read_jsonl(self.path, self.diagnostics):
+            if raw_record.get('event') == 'additional_xp':
+                status, key, merged = self._prepare_additional_xp(raw_record)
+                if status == 'updated':
+                    self.records[self._index[key]] = merged
+                    self._xp_adjustments[key] = self._canonical_xp_event(raw_record, key)
+                    self.diagnostics['revisions'] += 1
+                elif status == 'duplicate':
+                    self.diagnostics['duplicates'] += 1
+                elif status == 'conflict':
+                    self.diagnostics['conflicts'] += 1
+                else:
+                    self.diagnostics['invalid'] += 1
+                continue
             record = validate_record(raw_record)
             if record is None:
                 self.diagnostics['invalid'] += 1
@@ -148,7 +167,7 @@ class BattleStore(object):
             key = self._key(record)
             if key in self._index:
                 position = self._index[key]
-                status, merged = self._merge(self.records[position], record)
+                status, merged = self._merge_observation(key, record)
                 if status == 'updated':
                     self.records[position] = merged
                     self.diagnostics['revisions'] += 1
@@ -185,7 +204,7 @@ class BattleStore(object):
         key = self._key(record)
         if key in self._index:
             position = self._index[key]
-            status, merged = self._merge(self.records[position], record)
+            status, merged = self._merge_observation(key, record)
             if status != 'updated':
                 return status
             _durable_append(self.path, merged)
@@ -209,6 +228,139 @@ class BattleStore(object):
         position = self._index.get(key)
         return dict(self.records[position]) if position is not None else None
 
+    def apply_additional_xp(self, account_id, arena_id, vehicle_id, expected_xp, extra_xp):
+        """Persist one confirmed service bonus; never use account aggregates.
+
+        The live adapter must observe the arena-specific offer before applying
+        it and the client's successful-applied flag afterwards. This boundary
+        requires an exact existing own account/arena/type and unchanged XP.
+        Ordinary ``upsert`` still rejects every conflicting known metric.
+        """
+        event = {'schema': 1, 'event': 'additional_xp',
+                 'source': 'battle_results_service',
+                 'account_id': account_id, 'arena_id': arena_id,
+                 'vehicle_id': vehicle_id, 'xp_before': expected_xp,
+                 'xp_delta': extra_xp}
+        status, key, merged = self._prepare_additional_xp(event)
+        if status != 'updated':
+            return status
+        event = self._canonical_xp_event(event, key)
+        _durable_append(self.path, event)
+        self.records[self._index[key]] = merged
+        self._xp_adjustments[key] = event
+        self.diagnostics['lines'] += 1
+        self.diagnostics['revisions'] += 1
+        return status
+
+    @staticmethod
+    def _canonical_xp_event(event, key):
+        return {'schema': 1, 'event': 'additional_xp',
+                'source': 'battle_results_service',
+                'account_id': key[0], 'arena_id': key[1],
+                'vehicle_id': normalize_vehicle_id(event['vehicle_id']),
+                'xp_before': _non_negative_int(event['xp_before']),
+                'xp_delta': _non_negative_int(event['xp_delta'])}
+
+    def _prepare_additional_xp(self, event):
+        """Pure reducer shared by a live durable append and journal replay."""
+        key = self._key(event)
+        identity = normalize_vehicle_id(event.get('vehicle_id'))
+        before = _non_negative_int(event.get('xp_before'))
+        delta = _non_negative_int(event.get('xp_delta'))
+        if (event.get('schema') != 1 or isinstance(event.get('schema'), bool) or
+                not isinstance(event.get('schema'), (int, long_type)) or
+                event.get('event') != 'additional_xp' or
+                event.get('source') != 'battle_results_service' or key is None or
+                (_non_negative_int(key[0]) or 0) <= 0 or
+                isinstance(event.get('account_id'), bool) or
+                identity is None or not identity.startswith('type:') or
+                before is None or delta is None or delta <= 0 or
+                before > MAX_RECORD_INTEGER - delta):
+            return 'invalid', key, None
+        old_event = self._xp_adjustments.get(key)
+        if old_event is not None:
+            same = (old_event['vehicle_id'] == identity and
+                    old_event['xp_before'] == before and old_event['xp_delta'] == delta)
+            return ('duplicate' if same else 'conflict'), key, None
+        position = self._index.get(key)
+        if position is None:
+            return 'missing', key, None
+        previous = self.records[position]
+        previous_identity = previous.get('vehicle_id')
+        if ((previous_identity is not None and previous_identity.startswith('type:') and
+             previous_identity != identity) or
+                (previous.get('xp') is not None and previous['xp'] != before)):
+            return 'conflict', key, None
+        if (previous_identity is None or not previous_identity.startswith('type:') or
+                previous.get('xp') is None):
+            return 'missing', key, None
+        merged = dict(previous)
+        merged['xp'] = before + delta
+        if previous.get('xp_bonus') is not None:
+            if previous['xp_bonus'] > MAX_RECORD_INTEGER - delta:
+                return 'invalid', key, None
+            merged['xp_bonus'] = previous['xp_bonus'] + delta
+        checked = validate_record(merged)
+        return ('updated', key, checked) if checked is not None else ('invalid', key, None)
+
+    def _with_applied_xp(self, key, incoming):
+        # The result cache may repeat the original per-battle result after the
+        # explicitly observed bonus. Translate only that exact known baseline,
+        # once; any other XP value remains a normal conflicting known metric.
+        event = self._xp_adjustments.get(key)
+        if event is None:
+            return incoming
+        if incoming.get('xp') is None and incoming.get('xp_bonus') is not None:
+            # Without received XP this partial bonus has no pre/post-award
+            # meaning. It cannot fill a missing current bonus by guessing.
+            return None
+        if incoming.get('xp') != event['xp_before']:
+            return incoming
+        if (incoming.get('xp_bonus') is not None and
+                incoming['xp_bonus'] > MAX_RECORD_INTEGER - event['xp_delta']):
+            return None
+        result = dict(incoming)
+        result['xp'] += event['xp_delta']
+        if result.get('xp_bonus') is not None:
+            result['xp_bonus'] += event['xp_delta']
+        return result
+
+    def _merge_observation(self, key, incoming):
+        previous = self.records[self._index[key]]
+        incoming = self._with_applied_xp(key, incoming)
+        return ('conflict', previous) if incoming is None else self._merge(previous, incoming)
+
+    def compacted_records(self):
+        """Minimal journal lines retaining bonus provenance and stale dedup.
+
+        An offline compactor must not discard the original XP baseline, or a
+        later original cache response could become a false conflict (and the
+        applied bonus would no longer be provable after restart).
+        """
+        rows = []
+        for record in self.records:
+            key = self._key(record)
+            event = self._xp_adjustments.get(key)
+            baseline = dict(record)
+            late_bonus = False
+            if event is not None:
+                baseline['xp'] = event['xp_before']
+                if baseline.get('xp_bonus') is not None:
+                    if baseline['xp_bonus'] < event['xp_delta']:
+                        # The first result may have total XP below base XP
+                        # (penalties), leaving bonus unknown. A later positive
+                        # post-bonus value need not have a nonnegative inverse.
+                        baseline['xp_bonus'] = None
+                        late_bonus = True
+                    else:
+                        baseline['xp_bonus'] -= event['xp_delta']
+            rows.append(baseline)
+            if event is not None:
+                rows.append(dict(event))
+                if late_bonus:
+                    rows.append(dict(record))
+        return rows
+
     @staticmethod
     def _merge(previous, incoming):
         merged = dict(previous)
@@ -224,7 +376,7 @@ class BattleStore(object):
                      'assistance_radio', 'assistance_track', 'map', 'kills',
                      'survived', 'shots', 'direct_hits', 'penetrations',
                      'xp_base', 'xp_bonus', 'credits_gross', 'credits_net',
-                     'map_label', 'vehicle_tier', 'vehicle_class', 'vehicle_nation'):
+                     'map_label', 'vehicle_label', 'vehicle_tier', 'vehicle_class', 'vehicle_nation'):
             old, new = previous.get(name), incoming.get(name)
             old_missing = old is None or old == 'unknown'
             new_missing = new is None or new == 'unknown'
@@ -234,7 +386,7 @@ class BattleStore(object):
                 merged[name] = new
                 changed = True
             elif old != new:
-                if name == 'vehicle' and labels_linked:
+                if name in ('vehicle', 'vehicle_label') and labels_linked:
                     # A type identity can survive localization/renaming. Keep
                     # the first display label and every known numeric value.
                     continue
@@ -298,6 +450,9 @@ class PendingJournal(object):
             for name in VEHICLE_METADATA_FIELDS:
                 if metadata[name] is not None:
                     safe[name] = metadata[name]
+            label = normalize_vehicle_label(context.get('vehicle_label'))
+            if label is not None:
+                safe['vehicle_label'] = label
         item = {'event': 'start', 'arena_id': arena, 'timestamp': int(timestamp),
                 'context': safe}
         _durable_append(self.path, item)

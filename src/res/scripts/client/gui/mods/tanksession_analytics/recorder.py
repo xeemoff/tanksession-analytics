@@ -19,6 +19,24 @@ class ResultRecorder(object):
         self.require_account = require_account
         self.metadata_provider = metadata_provider
 
+    def enriched_metadata(self, record):
+        """Fill optional catalog labels/metadata without changing known data."""
+        if self.metadata_provider is not None:
+            try:
+                additions = self.metadata_provider(dict(record))
+                if isinstance(additions, dict):
+                    enriched = dict(record)
+                    for name in ('map_label', 'vehicle_label', 'vehicle_tier',
+                                 'vehicle_class', 'vehicle_nation'):
+                        if enriched.get(name) is None and additions.get(name) is not None:
+                            enriched[name] = additions[name]
+                    checked = validate_record(enriched)
+                    if checked is not None:
+                        return checked
+            except Exception:
+                pass
+        return record
+
     def receive(self, payload, current_context=None, observed_at=None,
                 expected_arena=None, confirmed_own=False):
         """Return (status, record-or-None); identity errors fail closed in live mode.
@@ -51,21 +69,9 @@ class ResultRecorder(object):
         result = normalize_result(payload, context=context, observed_at=observed_at)
         if result is None:
             return 'skipped', None
-        if self.metadata_provider is not None:
-            # Catalog enrichment is optional and reads only the already
-            # identified own record. Its failure cannot discard a battle.
-            try:
-                additions = self.metadata_provider(dict(result))
-                if isinstance(additions, dict):
-                    enriched = dict(result)
-                    for name in ('map_label', 'vehicle_tier', 'vehicle_class', 'vehicle_nation'):
-                        if enriched.get(name) is None and additions.get(name) is not None:
-                            enriched[name] = additions[name]
-                    checked = validate_record(enriched)
-                    if checked is not None:
-                        result = checked
-            except Exception:
-                pass
+        # Catalog failures cannot discard a battle, and a later catalog must
+        # never overwrite metadata captured with the own battle context.
+        result = self.enriched_metadata(result)
         status = self.store.upsert(result)
         # Return what is actually persisted, including fields from an earlier
         # partial result. A legacy local-vs-known duplicate has no exact-account

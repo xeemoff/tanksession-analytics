@@ -118,6 +118,18 @@ def normalize_vehicle_metadata(value, identity=None):
     return {'vehicle_tier': tier, 'vehicle_class': vehicle_class, 'vehicle_nation': nation}
 
 
+def normalize_vehicle_label(value):
+    """A bounded client-localized display name, never an identity source."""
+    value = _text(value)
+    if value is None:
+        return None
+    value = value.strip()
+    if (not value or len(value) > 128 or value.startswith('#') or
+            any(ord(char) < 32 or ord(char) == 127 for char in value)):
+        return None
+    return value
+
+
 def metadata_from_vehicle_type(vehicle_type):
     """Read only the client's verified VehicleType fields, never entity IDs.
 
@@ -148,6 +160,16 @@ def metadata_from_vehicle_type(vehicle_type):
         'vehicle_nation': nation_for_identity(identity),
     }, identity)
     values['vehicle_id'] = identity
+    # VehicleType delegates these fields to I18nComponent. They are already
+    # localized by the client; its technical ``name`` is not a display label.
+    for field in ('shortUserString', 'userString'):
+        try:
+            label = normalize_vehicle_label(getattr(vehicle_type, field, None))
+        except Exception:
+            continue
+        if label is not None:
+            values['vehicle_label'] = label
+            break
     return values
 
 

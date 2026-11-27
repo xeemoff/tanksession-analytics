@@ -21,7 +21,7 @@ function Get-TankSessionEntryHash($Entry) {
 
 function Test-TankSessionDataName([string]$Name) {
     return ($Name -cin @('battles.jsonl', 'settings.json', 'goals.json')) -or
-        ($Name -cmatch '^profiles/[0-9a-f]{64}\.json$')
+        ($Name -cmatch '^profiles/[0-9a-f]{64}\.json(?:\.bak)?(?:\.rollback)?\z')
 }
 
 function Get-TankSessionDataRoot([string]$GameRoot) {
@@ -53,9 +53,10 @@ function Get-TankSessionDataFiles([string]$Root) {
     if (Test-Path -LiteralPath $profiles) {
         Assert-TankSessionRegularPath $profiles
         foreach ($file in @(Get-ChildItem -LiteralPath $profiles -File | Sort-Object Name)) {
-            if ($file.Name -cmatch '^[0-9a-f]{64}\.json$') {
+            $relative = 'profiles/' + $file.Name
+            if (Test-TankSessionDataName $relative) {
                 Assert-TankSessionRegularPath $file.FullName
-                $files += [PSCustomObject]@{ Name = ('profiles/' + $file.Name); Path = $file.FullName }
+                $files += [PSCustomObject]@{ Name = $relative; Path = $file.FullName }
             }
         }
     }
@@ -208,6 +209,22 @@ function Import-TankSessionHistory([string]$GameRoot, [string]$ArchivePath) {
         $stage = Join-Path $mods ('.tanksession-import-' + [Guid]::NewGuid().ToString('N'))
         $null = New-Item -ItemType Directory -Path $stage
         $manifest = Read-TankSessionHistoryArchive $ArchivePath $stage
+        # A rollback-only snapshot must not silently lose to an unrelated
+        # current destination: Workspace deliberately prefers a valid main
+        # file. Refuse this merge before creating a backup or editing data.
+        $incoming = @{}
+        foreach ($member in @($manifest.files)) { $incoming[$member.path] = $true }
+        foreach ($member in @($manifest.files)) {
+            if ($member.path -cnotmatch '^profiles/[0-9a-f]{64}\.json(?:\.bak)?\.rollback\z') { continue }
+            $mainName = $member.path.Substring(0, $member.path.Length - '.rollback'.Length)
+            if ($incoming.ContainsKey($mainName)) { continue }
+            $mainPath = Join-Path $root ($mainName.Replace('/', [IO.Path]::DirectorySeparatorChar))
+            $mainParent = [IO.Path]::GetDirectoryName($mainPath)
+            if (Test-Path -LiteralPath $mainParent) { Assert-TankSessionRegularPath $mainParent }
+            if (Test-Path -LiteralPath $mainPath) {
+                throw 'Архив содержит только файл восстановления .rollback, а соответствующий основной файл уже существует. Восстановите архив в отдельную копию данных без этого основного файла. Исходные данные не изменены.'
+            }
+        }
         $existing = @(Get-TankSessionDataFiles $root)
         if ($existing.Count -gt 0) {
             $backup = (New-TankSessionBackupPath $GameRoot 'data') + '.zip'

@@ -183,6 +183,30 @@ class RevisionTests(unittest.TestCase):
 
 
 class JournalDiagnosticsTests(unittest.TestCase):
+    def test_offline_compaction_keeps_additional_xp_evidence_and_backup(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, 'battles.jsonl')
+            baseline = {'schema': 1, 'account_id': '88', 'arena_id': '9001',
+                        'vehicle_id': 'type:257', 'vehicle': 'ussr:R04_T-34',
+                        'timestamp': 1700000000, 'xp': 600, 'xp_base': 900,
+                        'xp_bonus': None, 'damage': 1000, 'outcome': 'win'}
+            store = BattleStore(path)
+            store.upsert(baseline)
+            store.apply_additional_xp('88', '9001', 'type:257', 600, 450)
+            store.upsert(dict(baseline, xp=1050, xp_bonus=150))
+            with open(path, 'rb') as stream:
+                original = stream.read()
+            details = compact(path)
+            self.assertEqual(details['records'], 1)
+            with open(details['backup'], 'rb') as stream:
+                self.assertEqual(stream.read(), original)
+            reopened = BattleStore(path)
+            self.assertEqual(reopened.records, store.records)
+            self.assertEqual(reopened.diagnostics['invalid'], 0)
+            self.assertEqual(reopened.upsert(baseline), 'duplicate')
+            self.assertEqual(reopened.apply_additional_xp('88', '9001', 'type:257', 600, 450),
+                             'duplicate')
+
     def test_counts_do_not_conflate_revisions_conflicts_and_invalid_records(self):
         with tempfile.TemporaryDirectory() as folder:
             path = os.path.join(folder, 'battles.jsonl')

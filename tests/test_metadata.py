@@ -51,6 +51,39 @@ class MetadataTests(unittest.TestCase):
         future.level = 12
         self.assertIsNone(metadata_from_vehicle_type(future)['vehicle_tier'])
 
+    def test_localized_label_comes_only_from_the_exact_vehicle_type(self):
+        vehicle = VehicleType()
+        vehicle.shortUserString = u'Т-34'
+        vehicle.userString = u'Полное имя Т-34'
+        self.assertEqual(metadata_from_vehicle_type(vehicle)['vehicle_label'], u'Т-34')
+        vehicle.shortUserString = '#ussr_vehicles:T-34_short'
+        self.assertEqual(metadata_from_vehicle_type(vehicle)['vehicle_label'], u'Полное имя Т-34')
+        for invalid in (b'\xff', 257, u'bad\x00label', u'x' * 129, u'#unresolved:key'):
+            vehicle.shortUserString = invalid
+            vehicle.userString = invalid
+            self.assertNotIn('vehicle_label', metadata_from_vehicle_type(vehicle))
+        vehicle.shortUserString = u'Т-34'
+        vehicle.id = (1, 1)
+        self.assertEqual(metadata_from_vehicle_type(vehicle), {})
+
+    def test_bound_label_survives_pending_restart_without_becoming_an_identity(self):
+        folder = tempfile.mkdtemp(prefix='tanksession-label-')
+        try:
+            path = os.path.join(folder, 'battles.jsonl')
+            pending_path = path + '.pending.jsonl'
+            captured = dict(context(), vehicle_label=u'Т-34')
+            PendingJournal(pending_path).start(99, captured, 1700000000)
+            recorder = ResultRecorder(BattleStore(path), PendingJournal(pending_path), require_account=True)
+            status, record = recorder.receive(payload(), {'account_id': '88'}, confirmed_own=True)
+            self.assertEqual(status, 'saved')
+            self.assertEqual(record['vehicle_label'], u'Т-34')
+            self.assertEqual(record['vehicle'], 'ussr:R04_T-34')
+            self.assertEqual(record['vehicle_id'], 'type:257')
+            self.assertEqual(BattleStore(path).records[0]['vehicle_label'], u'Т-34')
+            self.assertIsNone(validate_record(dict(record, vehicle_id=None)))
+        finally:
+            shutil.rmtree(folder)
+
     def test_normalization_accepts_only_identity_bound_captured_metadata(self):
         record = normalize_result(payload(), context(), 1700000000)
         self.assertEqual((record['vehicle_tier'], record['vehicle_class'], record['vehicle_nation']),

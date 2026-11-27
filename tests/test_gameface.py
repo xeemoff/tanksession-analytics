@@ -370,6 +370,49 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(window.payloads[-1]['request_id'], 'ui-3')
         self.assertIn('summary', window.payloads[-1])
 
+    def test_profile_write_failure_keeps_same_account_data_and_allows_retry(self):
+        from tanksession_analytics.workspace import Workspace, DEFAULT_PREFERENCES
+
+        workspace = Workspace(ROOT, memory=True, log=self.logs.append)
+        records = [dict(arena_id='private-arena', account_id='88', vehicle='Tank',
+                        mode='1', outcome='win', damage=1000, xp=500, timestamp=1700000000),
+                   dict(arena_id='private-other-arena', account_id='99', vehicle='PRIVATE_OTHER_TANK',
+                        mode='1', outcome='win', damage=9000, xp=500, timestamp=1700000000)]
+        self.controller._snapshot_provider = lambda account, value: workspace.snapshot(
+            records, account, value, now=1700000999)
+        window = self.open()
+        original_save = workspace._save
+
+        def unavailable_dependency(account, profile):
+            raise ImportError('PRIVATE_PATH PRIVATE_ACCOUNT PRIVATE_PREFERENCES')
+
+        workspace._save = unavailable_dependency
+        preferences = dict(DEFAULT_PREFERENCES, contrast='high')
+        window.on_request(request('failed-save', action='save_preferences', preferences=preferences))
+        self.runtime.run(self.controller._request_timer)
+        failed = window.payloads[-1]
+        self.assertEqual(failed['request_id'], 'failed-save')
+        self.assertEqual(failed['status'], 'ready')
+        self.assertEqual(failed['summary']['battles'], 1)
+        self.assertEqual(failed['workspace']['operation'], {'status': 'error', 'code': 'write_failed'})
+        self.assertEqual(failed['workspace']['preferences'], DEFAULT_PREFERENCES)
+        self.assertNotIn('PRIVATE_', json.dumps(failed))
+        self.assertNotIn('data_unavailable', json.dumps(failed))
+        self.assertFalse(window.closed)
+        self.assertIn('Workspace: save_preferences failed (ImportError)', self.logs)
+        self.assertNotIn('PRIVATE_', '\n'.join(self.logs))
+
+        workspace._save = original_save
+        window.on_request(request('retried-save', action='save_preferences', preferences=preferences))
+        self.runtime.run(self.controller._request_timer)
+        saved = window.payloads[-1]
+        self.assertEqual(saved['workspace']['operation']['code'], 'preferences_saved')
+        self.assertEqual(saved['workspace']['preferences'], preferences)
+        self.controller.refresh()
+        self.runtime.run(self.controller._request_timer)
+        self.assertEqual(window.payloads[-1]['workspace']['preferences'], preferences)
+        self.assertEqual(window.payloads[-1]['summary']['battles'], 1)
+
     def test_snapshot_size_is_bounded_before_native_publication(self):
         self.controller._snapshot_provider = lambda account, value: {
             'protocol': 1, 'source': 'game', 'request_id': value['request_id'],

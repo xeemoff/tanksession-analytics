@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { useEffect, useState } from 'react';
 import { HistoryBattle, HistorySort, Selection, Snapshot } from './contracts';
 import { formatNumber, outcomeLabel, timeLabel } from './format';
@@ -8,10 +9,10 @@ function BattleDetails({ battle, onBack }: { battle: HistoryBattle; onBack: () =
   const [tab, setTab] = useState<'battle' | 'economy'>('battle');
   const item = (label: string, value: string, detail?: string) => <div className="detail-metric" key={label}><span>{label}</span><strong>{value}</strong>{detail && <small>{detail}</small>}</div>;
   return <section className="battle-detail" aria-label="Подробности боя">
-    <div className="section-heading"><h2>{vehicleLabel(battle.vehicle, battle.vehicle_label) + ' · ' + timeLabel(battle.timestamp)}</h2><button type="button" onClick={onBack}>К списку боёв</button></div>
+    <div className="section-heading"><h2>{vehicleLabel(battle.vehicle, battle.vehicle_label) + ' · ' + timeLabel(battle.timestamp)}</h2><Button type="button" onClick={onBack}>К списку боёв</Button></div>
     <div className="insight-switch" role="group" aria-label="Показатели боя">
-      <button type="button" aria-pressed={tab === 'battle'} className={tab === 'battle' ? 'active' : ''} onClick={() => setTab('battle')}>Бой и стрельба</button>
-      <button type="button" aria-pressed={tab === 'economy'} className={tab === 'economy' ? 'active' : ''} onClick={() => setTab('economy')}>Опыт и экономика</button>
+      <Button type="button" aria-pressed={tab === 'battle'} className={tab === 'battle' ? 'active' : ''} onClick={() => setTab('battle')}>Бой и стрельба</Button>
+      <Button type="button" aria-pressed={tab === 'economy'} className={tab === 'economy' ? 'active' : ''} onClick={() => setTab('economy')}>Опыт и экономика</Button>
     </div>
     <div className="detail-grid">
       {tab === 'battle' ? <>
@@ -56,10 +57,10 @@ export function BattleHistory({ snapshot, onPage, onFilter, busy = false }: {
   return <section className="history-section">
     <div className="section-heading"><h2>{pagination ? 'История боёв' : 'Последние бои'}</h2><span className="small muted">{pagination ? pagination.total + (snapshot.selection.history_query ? ' найдено из ' + snapshot.summary.battles : ' записей · выбранная техника') : 'До 12 последних результатов'}</span></div>
     {'history_sort' in snapshot.selection && <div className="history-controls">
-      <form className="history-search" onSubmit={event => { event.preventDefault(); filter(); }}><label className="search-field"><span className="sr-only">Поиск по всей истории</span><input type="search" maxLength={64} value={query} disabled={busy || !onFilter} placeholder="Техника, карта, исход…" onChange={event => setQuery(event.target.value)} /></label><button type="submit" disabled={busy || !onFilter}>Найти</button>
-        {(query || snapshot.selection.history_query) && <button type="button" disabled={busy || !onFilter} onClick={() => { setQuery(''); filter(sort, ''); }}>Сбросить поиск</button>}</form>
+      <form className="history-search" onSubmit={event => { event.preventDefault(); filter(); }}><label className="search-field"><span className="sr-only">Поиск по всей истории</span><input type="search" maxLength={64} value={query} className={busy || !onFilter ? 'is-disabled' : ''} disabled={busy || !onFilter} placeholder="Техника, карта, исход…" onChange={event => setQuery(event.target.value)} /></label><Button type="submit" disabled={busy || !onFilter}>Найти</Button>
+        {(query || snapshot.selection.history_query) && <Button type="button" disabled={busy || !onFilter} onClick={() => { setQuery(''); filter(sort, ''); }}>Сбросить поиск</Button>}</form>
       <div className="insight-switch history-sort" role="group" aria-label="Сортировка всей истории">
-        {([['time_desc', 'Новые'], ['time_asc', 'Старые'], ['damage_desc', 'Урон'], ['xp_desc', 'Опыт'], ['credits_desc', 'Кредиты']] as const).map(([key, label]) => <button type="button" key={key} aria-pressed={sort === key} className={sort === key ? 'active' : ''} disabled={busy || !onFilter} onClick={() => filter(key)}>{label}</button>)}
+        {([['time_desc', 'Новые'], ['time_asc', 'Старые'], ['damage_desc', 'Урон'], ['xp_desc', 'Опыт'], ['credits_desc', 'Кредиты']] as const).map(([key, label]) => <Button type="button" key={key} aria-pressed={sort === key} className={sort === key ? 'active' : ''} disabled={busy || !onFilter} onClick={() => filter(key)}>{label}</Button>)}
       </div>
     </div>}
     <div role="table" aria-label="Последние бои" className="history-table">
@@ -71,17 +72,17 @@ export function BattleHistory({ snapshot, onPage, onFilter, busy = false }: {
           <span role="cell" className={'col-result result-' + (battle.outcome || 'unknown')}><span className="result-dot" />{outcomeLabel[battle.outcome || 'unknown'] || 'Неизвестно'}</span>
           <span role="cell" className="col-damage numeric">{formatNumber(battle.damage)}</span>
           <span role="cell" className="col-xp numeric muted">{formatNumber(battle.xp)}</span>
-          <span role="cell" className="col-details"><button type="button" className="detail-button" aria-label={'Подробности боя ' + (current * 5 + index + 1)} onClick={() => setDetails(battle)}>Открыть</button></span>
+          <span role="cell" className="col-details"><Button type="button" className="detail-button" aria-label={'Подробности боя ' + (current * 5 + index + 1)} onClick={() => setDetails(battle)}>Открыть</Button></span>
         </div>)}
       </div>
     </div>
     {rows.length === 0 && <div className="history-no-results" role="status"><strong>Совпадений не найдено</strong><span>Измените запрос или сбросьте поиск. Общая статистика выше относится ко всей выбранной технике.</span></div>}
     <div className="page-controls history-pages">
-      <button type="button" aria-label="Первая страница боёв" disabled={busy || current === 0 || (!!pagination && !onPage)} onClick={() => navigate(0)}>В начало</button>
-      <button type="button" aria-label="Предыдущая страница боёв" disabled={busy || current === 0 || (!!pagination && !onPage)} onClick={() => navigate(current - 1)}>Назад</button>
+      <Button type="button" aria-label="Первая страница боёв" disabled={busy || current === 0 || (!!pagination && !onPage)} onClick={() => navigate(0)}>В начало</Button>
+      <Button type="button" aria-label="Предыдущая страница боёв" disabled={busy || current === 0 || (!!pagination && !onPage)} onClick={() => navigate(current - 1)}>Назад</Button>
       <span data-testid="history-page">{String(current + 1) + ' / ' + pages}</span>
-      <button type="button" aria-label="Следующая страница боёв" disabled={busy || current + 1 >= pages || (!!pagination && !onPage)} onClick={() => navigate(current + 1)}>Далее</button>
-      <button type="button" aria-label="Последняя страница боёв" disabled={busy || current + 1 >= pages || (!!pagination && !onPage)} onClick={() => navigate(pages - 1)}>В конец</button>
+      <Button type="button" aria-label="Следующая страница боёв" disabled={busy || current + 1 >= pages || (!!pagination && !onPage)} onClick={() => navigate(current + 1)}>Далее</Button>
+      <Button type="button" aria-label="Последняя страница боёв" disabled={busy || current + 1 >= pages || (!!pagination && !onPage)} onClick={() => navigate(pages - 1)}>В конец</Button>
     </div>
     {'history_sort' in snapshot.selection && <p className="chart-footnote">Поиск и сортировка применяются ко всей выбранной истории, до разбиения на страницы. Неизвестные значения — в конце списка.</p>}
   </section>;

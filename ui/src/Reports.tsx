@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { useState } from 'react';
 import { PeriodReport, Snapshot } from './contracts';
 import { EconomyTotal, FeatureUnavailable, GroupChart } from './Analytics';
@@ -29,9 +30,9 @@ export function ReportsView({ snapshot, compact = false }: { snapshot: Snapshot;
   ] : [];
   return <section className="reports-view" aria-label="Периодический отчёт">
     <div className="section-heading"><div><h2>Ваш отчёт</h2><p className="section-description">По выбранной технике · время получения результатов</p></div>
-      <div className="insight-switch report-periods" role="group" aria-label="Период отчёта">{([['week', '7 дней'], ['month', '30 дней'], ['all_time', 'Вся история']] as const).map(([key, label]) => <button type="button" key={key} className={period === key ? 'active' : ''} aria-pressed={period === key} onClick={() => setPeriod(key)}>{label}</button>)}</div></div>
+      <div className="insight-switch report-periods" role="group" aria-label="Период отчёта">{([['week', '7 дней'], ['month', '30 дней'], ['all_time', 'Вся история']] as const).map(([key, label]) => <Button type="button" key={key} className={period === key ? 'active' : ''} aria-pressed={period === key} onClick={() => setPeriod(key)}>{label}</Button>)}</div></div>
     <p className="report-range" data-testid="report-range">{reportRange(report)}</p>
-    {!compact && <div className="insight-switch" role="group" aria-label="Содержание отчёта"><button type="button" className={tab === 'overview' ? 'active' : ''} aria-pressed={tab === 'overview'} onClick={() => setTab('overview')}>Кратко</button><button type="button" className={tab === 'vehicles' ? 'active' : ''} aria-pressed={tab === 'vehicles'} onClick={() => setTab('vehicles')}>По технике</button></div>}
+    {!compact && <div className="insight-switch" role="group" aria-label="Содержание отчёта"><Button type="button" className={tab === 'overview' ? 'active' : ''} aria-pressed={tab === 'overview'} onClick={() => setTab('overview')}>Кратко</Button><Button type="button" className={tab === 'vehicles' ? 'active' : ''} aria-pressed={tab === 'vehicles'} onClick={() => setTab('vehicles')}>По технике</Button></div>}
     {!compact && tab === 'vehicles' ? <GroupChart key={period} groups={report.vehicles} title="Техника за период" vehicles /> : <>
       <div className="report-totals"><article><span>БОЁВ</span><strong data-testid="report-battles">{formatNumber(report.summary.battles)}</strong></article>
         <article><span>ПОБЕДЫ</span><strong>{formatNumber(report.summary.win_rate, 1) + (report.summary.win_rate === null ? '' : '%')}</strong><small>{report.summary.known_outcomes + ' известных исходов'}</small></article>

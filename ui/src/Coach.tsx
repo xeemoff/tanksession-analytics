@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { useState } from 'react';
 import { Coach, GoalDefinition } from './contracts';
 import { CoachEvidence } from './CoachEvidence';
@@ -49,7 +50,7 @@ export function CoachCard({ coach, latestVehicle, latestVehicleLabel, onSelectVe
     <div className="section-heading"><h2>Разбор прогресса</h2><span className="subtle-tag">{choose ? 'ОДНА МАШИНА' : ambiguous ? 'ТЕХНИКА НЕ УТОЧНЕНА' : coach.window + ' + ' + coach.window + ' БОЁВ'}</span></div>
     {choose ? <div className="coach-choose">
       <div><strong>Выберите машину для личного сравнения</strong><p>Результаты разной или неизвестной техники не смешиваются. Выберите определённый танк в списке выше.</p></div>
-      {latestVehicle && latestVehicle !== 'unknown' && onSelectVehicle && <button type="button" className="coach-select-button" onClick={() => onSelectVehicle(latestVehicle)} aria-label="Разобрать последнюю машину">{'Разобрать ' + vehicleLabel(latestVehicle, latestVehicleLabel)}</button>}
+      {latestVehicle && latestVehicle !== 'unknown' && onSelectVehicle && <Button type="button" className="coach-select-button" onClick={() => onSelectVehicle(latestVehicle)} aria-label="Разобрать последнюю машину">{'Разобрать ' + vehicleLabel(latestVehicle, latestVehicleLabel)}</Button>}
     </div> : ambiguous ? <>
       <div className="coach-scope"><strong>{vehicleLabel(coach.vehicle, coach.vehicle_label)}</strong><span>{coach.battles + ' сохранённых боёв'}</span></div>
       <div className="coach-wait" role="status"><strong>Название связано с разной техникой.</strong>
@@ -77,8 +78,8 @@ export function CoachCard({ coach, latestVehicle, latestVehicleLabel, onSelectVe
       <Records coach={coach} /></>}
       {evidence && <CoachEvidence coach={coach} onSaveGoal={onSaveGoal} busy={busy} />}
       <div className="coach-foot"><p>По сохранённым боям на этой машине. Карты и условия боёв могут различаться.</p><div className="coach-foot-actions">
-        {coach.consistency && <button type="button" className="coach-explain-button" aria-expanded={evidence} onClick={() => { setEvidence(!evidence); setExplain(false); }}>{evidence ? 'К сравнению' : 'Наблюдения и цель'}</button>}
-        <button type="button" className="coach-explain-button" aria-expanded={explain} aria-controls="coach-explanation" onClick={() => { setExplain(!explain); setEvidence(false); }}>{explain ? 'Скрыть пояснение' : 'Как рассчитано'}</button></div></div>
+        {coach.consistency && <Button type="button" className="coach-explain-button" aria-expanded={evidence} onClick={() => { setEvidence(!evidence); setExplain(false); }}>{evidence ? 'К сравнению' : 'Наблюдения и цель'}</Button>}
+        <Button type="button" className="coach-explain-button" aria-expanded={explain} aria-controls="coach-explanation" onClick={() => { setExplain(!explain); setEvidence(false); }}>{explain ? 'Скрыть пояснение' : 'Как рассчитано'}</Button></div></div>
       {explain && <div id="coach-explanation" className="coach-explanation">
         <p>{'Сравнение: два последовательных периода по ' + coach.window + ' боёв. Нужен известный урон во всех ' + coach.required_battles + ' результатах; пропуски не считаются нулём.'}</p>
         <p>При разных известных типах боёв сравнение скрывается. Неизвестный тип не гарантирует одинаковые условия.</p>

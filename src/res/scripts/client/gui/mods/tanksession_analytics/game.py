@@ -14,7 +14,8 @@ import BattleReplay
 from PlayerEvents import g_playerEvents
 from debug_utils import LOG_NOTE, LOG_ERROR
 
-from gui.mods.tanksession_analytics.core import summarize, result_rejection_reason
+from gui.mods.tanksession_analytics.core import (summarize, result_rejection_reason,
+                                               _arena_id, _non_negative_int)
 from gui.mods.tanksession_analytics.storage import BattleStore, PendingJournal, default_path
 from gui.mods.tanksession_analytics.recorder import ResultRecorder, _verified_account
 from gui.mods.tanksession_analytics.recovery import CacheRecovery
@@ -39,6 +40,10 @@ _gameface = None
 _ui_workspace = None
 _in_hangar = False
 _result_service_event = None
+_result_service = None
+_additional_xp_event = None
+_additional_xp_candidates = {}
+_ui_vehicle_labels = {}
 
 
 def _log(message):
@@ -171,6 +176,32 @@ def _result_metadata(record):
     return metadata
 
 
+def _labelled_ui_records(account):
+    """Bounded, read-only label projection for old exact-type history rows.
+
+    At most 128 unique catalog types are looked up per hangar, newest first.
+    Existing history is not migrated or fsynced on the UI event thread.
+    """
+    records = list(_store.records)
+    for record in reversed(records):
+        identity = record.get('vehicle_id')
+        if (record.get('account_id') != account or record.get('vehicle_label') is not None or
+                not identity or not identity.startswith('type:')):
+            continue
+        key = (account, identity)
+        if key not in _ui_vehicle_labels and len(_ui_vehicle_labels) < 128:
+            metadata = _result_metadata({'vehicle_id': identity})
+            _ui_vehicle_labels[key] = metadata.get('vehicle_label')
+    labelled = []
+    for record in records:
+        label = _ui_vehicle_labels.get((account, record.get('vehicle_id')))
+        if (record.get('account_id') == account and record.get('vehicle_label') is None and
+                label is not None):
+            record = dict(record, vehicle_label=label)
+        labelled.append(record)
+    return labelled
+
+
 def _arena_id_from_player():
     try:
         player = BigWorld.player()
@@ -235,6 +266,8 @@ def _on_battle_results(is_player_vehicle, results):
             _log('Skipped battle due to account identity: ' + status)
         if status in ('saved', 'updated') and _gameface is not None:
             _gameface.refresh()
+        if status in ('saved', 'updated', 'duplicate'):
+            _on_additional_xp_changed()
     except Exception as error:
         _error('Battle capture failed: ' + type(error).__name__)
 
@@ -256,13 +289,21 @@ def _recovery_account():
 
 def _refresh_recovered():
     if _gameface is not None:
-        _gameface.refresh()
+        try:
+            _gameface.refresh()
+        except Exception as error:
+            _notice_once('result_refresh', 'Result display refresh unavailable: ' + type(error).__name__)
+
+
+def _on_cache_record():
+    # A cache callback may complete after the applied-bonus event. Retry the
+    # exact retained candidate now that its original own battle is durable.
+    _on_additional_xp_changed()
+    _refresh_recovered()
 
 
 def _on_result_posted(reusable, *args, **kwargs):
-    """A lobby result is ready; only query a previously staged own battle."""
-    if _recovery is None:
-        return
+    """Observe an own bonus offer; optionally recover a staged own result."""
     try:
         account = _recovery_account()
         arena = getattr(reusable, 'arenaUniqueID', None)
@@ -270,7 +311,9 @@ def _on_result_posted(reusable, *args, **kwargs):
         if (account is None or arena is None or
                 _verified_account(getattr(avatar, 'accountDBID', None)) != account):
             return
-        if _verified_account(_pending.context(arena).get('account_id')) != account:
+        _capture_additional_xp(reusable, account)
+        if (_recovery is None or _pending is None or
+                _verified_account(_pending.context(arena).get('account_id')) != account):
             return
         _log('Own pending result posted in lobby')
         _try_recover(arena_id=arena, posted=True)
@@ -279,20 +322,147 @@ def _on_result_posted(reusable, *args, **kwargs):
         _notice_once('result_posted', 'Lobby result hook unavailable in this client state')
 
 
-def _attach_result_service():
-    global _result_service_event
-    if _recovery is None or _result_service_event is not None:
+def _capture_additional_xp(reusable, account):
+    """Keep an exact per-arena offer before it disappears from the cache.
+
+    Pinned 1.46 service.applyAdditionalBonus captures this same arena's
+    extraXP/vehicleID, marks isAddXPBonusApplied only after server success,
+    then emits PREMIUM_XP_BONUS_CHANGED. No gameplay request is made here.
+    """
+    service = _result_service
+    if service is None or _additional_xp_event is None:
         return
+    try:
+        arena_value = getattr(reusable, 'arenaUniqueID', None)
+        arena = _arena_id(arena_value)
+        personal = getattr(reusable, 'personal', None)
+        progress = getattr(personal, 'xpProgress', None)
+        if (arena is None or service.isAddXPBonusApplied(arena_value) is not False or
+                not isinstance(progress, dict) or len(progress) != 1):
+            return
+        descriptor, values = next(iter(progress.items()))
+        identity = identity_from_type_descr(descriptor)
+        if identity is None or not isinstance(values, dict):
+            return
+        xp = _non_negative_int(values.get('xp'))
+        extra = _non_negative_int(service.getAdditionalXPValue(arena_value))
+        vehicle = service.getVehicleForArena(arena_value)
+        if (xp is None or extra is None or extra <= 0 or
+                identity_from_type_descr(getattr(vehicle, 'intCD', None)) != identity):
+            return
+        # Recheck after optional client getters: they may dispatch other events.
+        if account != _recovery_account():
+            return
+        key = (account, arena)
+        candidate = {'account_id': account, 'arena_id': arena,
+                     'arena_value': arena_value, 'vehicle_id': identity,
+                     'xp_before': xp, 'xp_delta': extra,
+                     'generation': _login_generation}
+        if key in _additional_xp_candidates and _additional_xp_candidates[key] != candidate:
+            # Conflicting offers cannot be reconciled from account aggregates.
+            _additional_xp_candidates[key] = None
+            _notice_once('additional_xp_offer', 'Additional XP offer changed; revision skipped')
+            return
+        if key not in _additional_xp_candidates and len(_additional_xp_candidates) >= 128:
+            return
+        _additional_xp_candidates[key] = candidate
+    except Exception:
+        _notice_once('additional_xp_offer', 'Additional XP offer unavailable; original XP retained')
+
+
+def _on_additional_xp_changed(*args, **kwargs):
+    """Apply only previously observed, now confirmed, own per-battle bonuses."""
+    try:
+        account = _recovery_account()
+    except Exception:
+        return
+    service = _result_service
+    if account is None or service is None or _store is None:
+        return
+    changed = False
+    for key, candidate in list(_additional_xp_candidates.items()):
+        if (candidate is None or candidate['account_id'] != account or
+                candidate['generation'] != _login_generation):
+            continue
+        try:
+            if service.isAddXPBonusApplied(candidate['arena_value']) is not True:
+                continue
+            if account != _recovery_account():
+                return
+            status = _store.apply_additional_xp(
+                account, candidate['arena_id'], candidate['vehicle_id'],
+                candidate['xp_before'], candidate['xp_delta'])
+            if status in ('updated', 'duplicate', 'conflict', 'invalid'):
+                _additional_xp_candidates.pop(key, None)
+            if status == 'updated':
+                changed = True
+                _log('Applied confirmed additional XP to existing own battle')
+            elif status in ('conflict', 'invalid'):
+                _notice_once('additional_xp_conflict',
+                             'Additional XP evidence conflicts; original record retained')
+        except Exception as error:
+            # Keep the bounded candidate for a later event after an I/O error.
+            _notice_once('additional_xp_write',
+                         'Additional XP revision unavailable: ' + type(error).__name__)
+    if changed:
+        _refresh_recovered()
+
+
+def _attach_result_service():
+    global _result_service_event, _result_service, _additional_xp_event
     try:
         from helpers import dependency
         from skeletons.gui.battle_results import IBattleResultsService
         service = dependency.instance(IBattleResultsService)
         event = service.onResultPosted
+        first = _result_service_event is None
+        if _result_service_event is not None:
+            # The client can clear its EventManager between login and hangar.
+            # Rebind just our callback, without inspecting private handlers.
+            try:
+                _result_service_event -= _on_result_posted
+            except Exception:
+                pass
+        if _result_service is not None and _result_service is not service:
+            _additional_xp_candidates.clear()
         event += _on_result_posted
         _result_service_event = event
-        _log('Lobby result hook attached')
+        _result_service = service
+        if first:
+            _log('Lobby result hook attached')
     except Exception:
         _notice_once('result_service', 'Optional lobby result hook unavailable')
+    if _result_service is not None and _additional_xp_event is None:
+        try:
+            for name in ('isAddXPBonusApplied', 'getAdditionalXPValue', 'getVehicleForArena'):
+                if not callable(getattr(_result_service, name, None)):
+                    raise AttributeError('Additional XP API unavailable')
+            from gui.shared import g_eventBus, events
+            event_name = events.LobbySimpleEvent.PREMIUM_XP_BONUS_CHANGED
+            g_eventBus.addListener(event_name, _on_additional_xp_changed)
+            _additional_xp_event = (g_eventBus, event_name)
+            _log('Additional XP observation attached')
+        except Exception:
+            _notice_once('additional_xp_api', 'Optional additional XP observation unavailable')
+
+
+def _detach_result_service():
+    global _result_service_event, _result_service, _additional_xp_event
+    if _additional_xp_event is not None:
+        try:
+            bus, name = _additional_xp_event
+            bus.removeListener(name, _on_additional_xp_changed)
+        except Exception:
+            pass
+        _additional_xp_event = None
+    if _result_service_event is not None:
+        try:
+            _result_service_event -= _on_result_posted
+        except Exception:
+            pass
+        _result_service_event = None
+    _result_service = None
+    _additional_xp_candidates.clear()
 
 
 def _try_recover(arena_id=None, posted=False):
@@ -364,6 +534,8 @@ def _on_account_become_player(*args, **kwargs):
     # A new login event must invalidate the previous account, even if the
     # current client's databaseID is temporarily unavailable.
     _account_id = None
+    _detach_result_service()
+    _ui_vehicle_labels.clear()
     _login_generation += 1
     _cancel_recovery_timers()
     try:
@@ -380,6 +552,7 @@ def _on_account_become_player(*args, **kwargs):
         _notices.discard('account_identity')
     if _recovery is not None:
         _recovery.reset_session(_account_id)
+    _attach_result_service()
     _try_recover()
     _schedule_recovery_checks()
 
@@ -401,6 +574,8 @@ def _on_hangar_space_create(*args, **kwargs):
     if _gameface is not None:
         _gameface.on_hangar()
     _attach_result_service()
+    _ui_vehicle_labels.clear()
+    _on_additional_xp_changed()
     _try_recover()
     _schedule_recovery_checks()
     try:
@@ -454,6 +629,7 @@ def _load_ui_opt_in():
 def _leave_hangar(*args, **kwargs):
     global _in_hangar
     _in_hangar = False
+    _additional_xp_candidates.clear()
     _cancel_recovery_timers()
     if _recovery is not None:
         _recovery.reset_session()
@@ -513,8 +689,8 @@ def _ui_snapshot(account, request):
                             if _verified_account(item.get('context', {}).get('account_id')) == account)
     folder = os.path.dirname(_store.path)
     if _ui_workspace is None or _ui_workspace.folder != folder:
-        _ui_workspace = Workspace(folder)
-    return _ui_workspace.snapshot(list(_store.records), account, request=request,
+        _ui_workspace = Workspace(folder, log=_log)
+    return _ui_workspace.snapshot(_labelled_ui_records(account), account, request=request,
                                   legacy_goals=_ui_goals, pending_count=pending_count,
                                   diagnostics=dict(_store.diagnostics), source='game')
 
@@ -581,7 +757,7 @@ def init():
             _recovery = CacheRecovery(_pending, _recorder, log=_log,
                                       max_requests=1, serialize=True,
                                       account_provider=_recovery_account,
-                                      on_record=_refresh_recovered)
+                                      on_record=_on_cache_record)
             _log('EXPERIMENTAL cache recovery enabled (unverified API)')
         stage = 'subscribing required battle-result event'
         _attach_event('onBattleResultsReceived', _on_battle_results, required=True)
@@ -621,12 +797,8 @@ def fini():
         _recovery.stop()
     _cancel_recovery_timers()
     _detach_events()
-    if _result_service_event is not None:
-        try:
-            _result_service_event -= _on_result_posted
-        except Exception:
-            pass
-        _result_service_event = None
+    _detach_result_service()
+    _ui_vehicle_labels.clear()
     if _hangar_space is not None:
         try:
             _hangar_space.onSpaceCreate -= _on_hangar_space_create

@@ -53,7 +53,7 @@ export class GamefaceBridge implements Bridge {
             && typeof envelope.request_id === 'string' && /^[A-Za-z0-9_.:-]{1,64}$/.test(envelope.request_id)
             && envelope.error === 'data_unavailable') {
             if (envelope.request_id === 'closed') throw new Error('Окно статистики закрыто. Откройте его заново в ангаре.');
-            throw new Error('Не удалось подготовить данные. Проверьте журнал TankSession и файл целей goals.json.');
+            throw new Error('Не удалось подготовить данные. Обновите панель или откройте её заново. Подробности — в журнале TankSession.');
           }
         }
         const snapshot = parseSnapshot(decoded);

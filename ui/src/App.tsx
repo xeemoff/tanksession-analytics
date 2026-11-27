@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { useEffect, useRef, useState } from 'react';
 import { createBridge } from './bridge';
 import { getMode, Goal, GoalDefinition, DashboardModule, Mode, Selection, Snapshot, WindowSize, BattlePoint } from './contracts';
@@ -14,6 +15,7 @@ import { ActivityView, AnalyticsView, EconomyView, FeatureUnavailable } from './
 import { ReportsView } from './Reports';
 import { VehicleCard, VehicleCollection } from './VehicleCards';
 import { moduleLabels } from './preferences';
+import { bindPanelWheel, GAMEFACE_SCROLL_STEP, scrollPanel } from './scroll';
 export { formatNumber } from './format';
 const SECTIONS: Array<{ id: PanelSection; label: string }> = [
   { id: 'progress', label: 'Прогресс' }, { id: 'dynamics', label: 'Динамика и цели' }, { id: 'history', label: 'История боёв' }, { id: 'summary', label: 'Сводка' },
@@ -104,7 +106,7 @@ export function DamageBars({ points }: { points: BattlePoint[] }) {
   return <div className="damage-chart">
     <div className="chart-range"><span>{known ? formatNumber(Math.max(...points.map(point => point.damage || 0))) : '—'}</span><span>УРОН ЗА БОЙ</span></div>
     <div className="damage-bars" role="group" aria-label="Урон отдельных боёв">
-      {points.map(point => <button key={point.battle} type="button" className={'damage-column damage-' + point.outcome + (active.battle === point.battle ? ' selected' : '')}
+      {points.map(point => <Button key={point.battle} type="button" className={'damage-column damage-' + point.outcome + (active.battle === point.battle ? ' selected' : '')}
         aria-label={description(point)} title={description(point)} aria-pressed={active.battle === point.battle} onClick={() => setSelected(point.battle)} onFocus={() => setSelected(point.battle)} onKeyDown={event => {
           if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
           event.preventDefault();
@@ -116,7 +118,7 @@ export function DamageBars({ points }: { points: BattlePoint[] }) {
             <span className="damage-bar" style={{ height: Math.max(2, Math.round(point.damage / max * 126)) + 'px' }} />}
         </span>
         <span className="damage-bar-number">{points.length <= 12 ? String(point.battle) : ''}</span>
-      </button>)}
+      </Button>)}
     </div>
     <div className="chart-axis"><span>{'Бой ' + points[0].battle}</span><span>{'Бой ' + points[points.length - 1].battle}</span></div>
     <p className="damage-detail" data-testid="damage-detail">{description(active)}</p>
@@ -130,8 +132,8 @@ function DamagePanel({ snapshot }: { snapshot: Snapshot }) {
   return <section className="trend-card">
     <div className="section-heading"><h2>Динамика урона</h2><span className="subtle-tag">{rolling || !points ? 'ОКНО ' + snapshot.selection.window : 'ДО 24 БОЁВ'}</span></div>
     {points && <div className="insight-switch" role="group" aria-label="Вид графика">
-      <button type="button" className={!rolling ? 'active' : ''} aria-pressed={!rolling} onClick={() => setRolling(false)}>Урон за бой</button>
-      <button type="button" className={rolling ? 'active' : ''} aria-pressed={rolling} onClick={() => setRolling(true)}>Скользящее среднее</button>
+      <Button type="button" className={!rolling ? 'active' : ''} aria-pressed={!rolling} onClick={() => setRolling(false)}>Урон за бой</Button>
+      <Button type="button" className={rolling ? 'active' : ''} aria-pressed={rolling} onClick={() => setRolling(true)}>Скользящее среднее</Button>
     </div>}
     {!rolling && points ? <DamageBars points={points} /> : <><Trend series={snapshot.series} windowSize={snapshot.selection.window} />
       {snapshot.coach ? <p className="trend-note">Скользящее среднее: для точки нужен известный урон минимум в 70% боёв окна.</p> : <Comparison snapshot={snapshot} />}</>}
@@ -169,9 +171,9 @@ export function InsightsView({ snapshot }: { snapshot: Snapshot }) {
     </div>}
     <div className="section-heading"><h2>Сводка по выборке</h2><span className="subtle-tag">ПО СОХРАНЁННЫМ ДАННЫМ</span></div>
     <div className="insight-switch" role="group" aria-label="Группировка сводки">
-      <button type="button" className={group === 'totals' ? 'active' : ''} aria-pressed={group === 'totals'} onClick={() => { setGroup('totals'); setPage(0); }}>Итоги</button>
-      <button type="button" className={group === 'days' ? 'active' : ''} aria-pressed={group === 'days'} onClick={() => { setGroup('days'); setPage(0); }}>По дням</button>
-      <button type="button" className={group === 'tanks' ? 'active' : ''} aria-pressed={group === 'tanks'} onClick={() => { setGroup('tanks'); setPage(0); }}>По технике</button>
+      <Button type="button" className={group === 'totals' ? 'active' : ''} aria-pressed={group === 'totals'} onClick={() => { setGroup('totals'); setPage(0); }}>Итоги</Button>
+      <Button type="button" className={group === 'days' ? 'active' : ''} aria-pressed={group === 'days'} onClick={() => { setGroup('days'); setPage(0); }}>По дням</Button>
+      <Button type="button" className={group === 'tanks' ? 'active' : ''} aria-pressed={group === 'tanks'} onClick={() => { setGroup('tanks'); setPage(0); }}>По технике</Button>
     </div>
     {group !== 'totals' && <><div className="history-table insight-table" role="table" aria-label="Сводка результатов">
       <div className="history-row history-head" role="row"><span role="columnheader" className="insight-label">{group === 'days' ? 'Дата получения' : 'Техника'}</span><span role="columnheader">Бои</span><span role="columnheader">Победы</span><span role="columnheader">Поражения</span><span role="columnheader">Ничьи</span><span role="columnheader">Побед, %</span><span role="columnheader">Ср. урон</span></div>
@@ -181,8 +183,8 @@ export function InsightsView({ snapshot }: { snapshot: Snapshot }) {
         <span role="cell">{formatNumber(row.summary.win_rate, 1)}</span><span role="cell">{formatNumber(row.summary.avg_damage)}</span>
       </div>)}
     </div>
-    <div className="page-controls"><button type="button" aria-label="Предыдущая страница сводки" disabled={current === 0} onClick={() => setPage(current - 1)}>Назад</button>
-      <span>{String(current + 1) + ' / ' + pages}</span><button type="button" aria-label="Следующая страница сводки" disabled={current + 1 >= pages} onClick={() => setPage(current + 1)}>Далее</button></div></>}
+    <div className="page-controls"><Button type="button" aria-label="Предыдущая страница сводки" disabled={current === 0} onClick={() => setPage(current - 1)}>Назад</Button>
+      <span>{String(current + 1) + ' / ' + pages}</span><Button type="button" aria-label="Следующая страница сводки" disabled={current + 1 >= pages} onClick={() => setPage(current + 1)}>Далее</Button></div></>}
     <p className="trend-note">{group === 'days' ? 'До 14 последних дней по местному времени получения результатов, не начала боя.' : group === 'tanks' ? 'До 20 машин с наибольшим числом записанных боёв.' : 'Итоги относятся к выбранной технике и сохранённой истории.'} Процент побед — среди известных исходов, средний урон — среди известных значений.</p>
   </section>;
 }
@@ -201,7 +203,7 @@ function GoalCard({ goals, selected, editable = false }: { goals: Goal[]; select
   const ambiguous = goal.status === 'identity_ambiguous';
   return <section className="goal-card">
     <div className="section-heading"><h2>Личная цель</h2><span className="subtle-tag">{goal.window} БОЁВ</span></div>
-    {available.length > 1 && <div className="page-controls goal-navigation"><button type="button" aria-label="Предыдущая цель" disabled={current === 0} onClick={() => setIndex(current - 1)}>Назад</button><span>{current + 1} / {available.length}</span><button type="button" aria-label="Следующая цель" disabled={current + 1 >= available.length} onClick={() => setIndex(current + 1)}>Далее</button></div>}
+    {available.length > 1 && <div className="page-controls goal-navigation"><Button type="button" aria-label="Предыдущая цель" disabled={current === 0} onClick={() => setIndex(current - 1)}>Назад</Button><span>{String(current + 1) + ' / ' + available.length}</span><Button type="button" aria-label="Следующая цель" disabled={current + 1 >= available.length} onClick={() => setIndex(current + 1)}>Далее</Button></div>}
     <div className="goal-vehicle"><span className="target-symbol">◎</span><strong>{vehicleLabel(goal.vehicle, goal.vehicle_label)}</strong></div>
     <div className="goal-values"><strong>{formatNumber(goal.avg_damage)}</strong><span>{'/ ' + formatNumber(goal.target)}</span></div>
     <span className="small muted">средний урон за серию</span>
@@ -245,7 +247,7 @@ function ProgressDashboard({ snapshot, onSelectVehicle, onSaveGoal, busy }: { sn
       <Metric label="ПОБЕДЫ" value={summary.win_rate === null ? '—' : formatNumber(summary.win_rate, 1) + '%'} detail={summary.wins + ' побед · ' + summary.losses + ' пораж. · ' + summary.draws + ' ничьих'} testId="win-rate" />
       <Metric label="СРЕДНИЙ УРОН" value={formatNumber(summary.avg_damage)} detail={'Известен в ' + summary.damage_samples + ' из ' + summary.battles + ' боёв'} emphasis testId="average-damage" />
     </div>}
-    {panels.length > 1 && <div className="dashboard-module-tabs insight-switch" role="group" aria-label="Модули личной панели">{panels.map(item => <button key={item} type="button" aria-pressed={current === item} className={current === item ? 'active' : ''} onClick={() => setActive(item)}>{moduleLabels[item]}</button>)}</div>}
+    {panels.length > 1 && <div className="dashboard-module-tabs insight-switch" role="group" aria-label="Модули личной панели">{panels.map(item => <Button key={item} type="button" aria-pressed={current === item} className={current === item ? 'active' : ''} onClick={() => setActive(item)}>{moduleLabels[item]}</Button>)}</div>}
     {current && <div className="dashboard-panel" key={current}>
       {current === 'coach' ? snapshot.coach ? <CoachCard coach={snapshot.coach} latestVehicle={snapshot.history[0]?.vehicle} latestVehicleLabel={snapshot.history[0]?.vehicle_label} onSelectVehicle={onSelectVehicle} onSaveGoal={onSaveGoal} busy={busy} /> : <FeatureUnavailable name="Разбор прогресса" />
         : current === 'vehicle' ? vehicle ? <VehicleCard vehicle={vehicle} selected /> : <VehicleCollection snapshot={snapshot} onSelect={onSelectVehicle} />
@@ -289,6 +291,7 @@ export default function App() {
   const [section, setSection] = useState<PanelSection>('progress');
   const control = useRef<SnapshotController | null>(null);
   const vehicles = useRef<Snapshot['vehicles']>([]);
+  const panelContent = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     vehicles.current = [];
     let restored = false;
@@ -310,27 +313,36 @@ export default function App() {
     window.addEventListener('keydown', key);
     return () => window.removeEventListener('keydown', key);
   }, [state.phase]);
+  useEffect(() => {
+    if (panelContent.current) return bindPanelWheel(panelContent.current, mode);
+  }, [mode, generation, state.phase === 'closed']);
   const choose = (selection: Selection) => control.current?.request({ ...selection, page: 0 });
   const busy = state.phase === 'connecting' || state.phase === 'loading';
   const inactive = state.phase === 'connecting' || state.phase === 'closed';
   if (state.phase === 'closed') return <main className="page"><div className="closed-panel"><span className="brand-mark">TS</span><h1>Панель закрыта</h1>
-    {mode !== 'gameface' && <button className="primary-button" type="button" onClick={() => { vehicles.current = []; setGeneration(generation + 1); }}>Открыть снова</button>}</div></main>;
+    {mode !== 'gameface' && <Button className="primary-button" type="button" onClick={() => { vehicles.current = []; setGeneration(generation + 1); }}>Открыть снова</Button>}</div></main>;
   const preferences = state.snapshot?.workspace?.preferences;
   const theme = preferences?.theme || 'hangar';
   return <main className={'page theme-' + theme}><div className={'panel theme-' + theme + (preferences?.density === 'compact' ? ' density-compact' : '') + (preferences?.contrast === 'high' ? ' contrast-high' : '') + (preferences?.motion === 'reduced' ? ' motion-reduced' : '')} aria-busy={busy}>
     <header className="panel-header"><div className="brand"><span className="brand-mark">TS</span><div><h1>TankSession<span className="brand-sub">ANALYTICS</span></h1><p>История боёв и личный прогресс</p></div></div>
-      <div className="header-actions"><SourceBadge mode={mode} /><button type="button" className="icon-button refresh" aria-label="Обновить статистику" disabled={inactive || busy} onClick={() => control.current?.request()}>Обновить</button>
-        <button type="button" className="icon-button close" aria-label="Закрыть панель" onClick={() => control.current?.close()}>×</button></div></header>
-    <div className="panel-content"><div className="toolbar"><VehiclePicker vehicles={vehicles.current} selected={state.selection.vehicle} disabled={inactive || busy} onSelect={vehicle => choose({ ...state.selection, vehicle })} />
+      <div className="header-actions"><SourceBadge mode={mode} /><Button type="button" className="icon-button refresh" aria-label="Обновить статистику" disabled={inactive || busy} onClick={() => control.current?.request()}>Обновить</Button>
+        <Button type="button" className="icon-button close" aria-label="Закрыть панель" onClick={() => control.current?.close()}>×</Button></div></header>
+    <div className="panel-content" id="panel-content" ref={panelContent} tabIndex={0} role="region" aria-label="Содержимое статистики" onKeyDown={event => {
+      if (event.target !== event.currentTarget) return;
+      const area = event.currentTarget;
+      const distance = event.key === 'PageDown' ? area.clientHeight * 0.8 : event.key === 'PageUp' ? -area.clientHeight * 0.8
+        : event.key === 'Home' ? -area.scrollHeight : event.key === 'End' ? area.scrollHeight : 0;
+      if (distance) { event.preventDefault(); scrollPanel(area, distance); }
+    }}><div className="toolbar"><VehiclePicker vehicles={vehicles.current} selected={state.selection.vehicle} disabled={inactive || busy} onSelect={vehicle => choose({ ...state.selection, vehicle })} />
       <div className="period-control"><span className="field-label">ПЕРИОД СРАВНЕНИЯ</span><div className="period-buttons" role="group" aria-label="Размер периода">
-        {([10, 30, 100] as WindowSize[]).map(size => <button key={size} type="button" aria-label={size + ' боёв'} aria-pressed={state.selection.window === size} disabled={inactive || busy}
-          className={state.selection.window === size ? 'active' : ''} onClick={() => choose({ ...state.selection, window: size })}>{size + ' боёв'}</button>)}
+        {([10, 30, 100] as WindowSize[]).map(size => <Button key={size} type="button" aria-label={size + ' боёв'} aria-pressed={state.selection.window === size} disabled={inactive || busy}
+          className={state.selection.window === size ? 'active' : ''} onClick={() => choose({ ...state.selection, window: size })}>{size + ' боёв'}</Button>)}
       </div></div><span className="local-note"><span className="status-dot" />Данные на вашем компьютере</span></div>
       <div className="section-tabs" role="group" aria-label="Разделы статистики">
-        {SECTIONS.map(item => <button type="button" key={item.id} aria-pressed={section === item.id} className={section === item.id ? 'active' : ''} disabled={inactive || busy} onClick={() => {
+        {SECTIONS.map(item => <Button type="button" key={item.id} aria-pressed={section === item.id} className={section === item.id ? 'active' : ''} disabled={inactive || busy} onClick={() => {
           setSection(item.id);
           if (item.id !== 'history' && state.selection.page) control.current?.request({ ...state.selection, page: 0 });
-        }}>{item.label}</button>)}
+        }}>{item.label}</Button>)}
       </div>
       {state.snapshot && (state.phase === 'ready' || state.phase === 'loading') ? <><PendingNotice snapshot={state.snapshot} />
         <OperationNotice snapshot={state.snapshot} />
@@ -341,10 +353,14 @@ export default function App() {
             onSelectVehicle={vehicle => choose({ ...state.selection, vehicle })} />}</div>
         {busy && <p className="command-progress" role="status">Сохраняем изменения…</p>}
       </> : state.phase === 'error' ? <div className="empty-state error-state" role="alert">
-        <span className="large-symbol">!</span><h2>Данные сейчас недоступны</h2><p>{state.message}</p><button className="primary-button" type="button" onClick={() => setGeneration(generation + 1)}>Повторить подключение</button>
+        <span className="large-symbol">!</span><h2>Данные сейчас недоступны</h2><p>{state.message}</p><Button className="primary-button" type="button" onClick={() => setGeneration(generation + 1)}>Повторить подключение</Button>
       </div> : <div className="empty-state loading-state" role="status"><span className="loading-bar" /><h2>{state.phase === 'connecting' ? 'Подключаем панель' : 'Обновляем статистику'}</h2><p>Показатели появятся после получения данных.</p></div>}
     </div>
     <footer className="panel-footer"><span>{mode === 'demo' ? 'Демонстрация интерфейса · данные вымышлены' : 'Только собственные завершённые бои'}</span>
+      {mode === 'gameface' && <div className="panel-scroll-buttons" role="group" aria-label="Прокрутка панели">
+        <Button type="button" aria-label="Прокрутить вверх" aria-controls="panel-content" title="Прокрутить вверх" onClick={() => { if (panelContent.current) scrollPanel(panelContent.current, -GAMEFACE_SCROLL_STEP * 2); }}>↑</Button>
+        <Button type="button" aria-label="Прокрутить вниз" aria-controls="panel-content" title="Прокрутить вниз" onClick={() => { if (panelContent.current) scrollPanel(panelContent.current, GAMEFACE_SCROLL_STEP * 2); }}>↓</Button>
+      </div>}
       <span>{state.snapshot ? 'Обновлено ' + timeLabel(state.snapshot.updated_at) : 'TankSession Analytics'}</span></footer>
   </div></main>;
 }

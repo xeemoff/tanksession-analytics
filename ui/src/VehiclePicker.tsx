@@ -1,3 +1,4 @@
+import { Button } from './Button';
 import { useEffect, useRef, useState } from 'react';
 import { Snapshot } from './contracts';
 import { vehicleLabel, vehicleLabelFor } from './vehicleLabel';
@@ -39,22 +40,22 @@ export function VehiclePicker({ vehicles, selected, disabled, onSelect }: {
     }
   }}>
     <span className="field-label">ТЕХНИКА</span>
-    <button className="picker-trigger" type="button" aria-haspopup="listbox" aria-expanded={open}
+    <Button className="picker-trigger" type="button" aria-haspopup="listbox" aria-expanded={open}
       aria-label="Выбрать танк" disabled={disabled} onClick={() => { setPage(0); setQuery(''); setOpen(!open); }}>
       <span className="picker-label">{selected ? vehicleLabelFor(selected, vehicles) : 'Вся техника'}</span><span className="chevron">v</span>
-    </button>
+    </Button>
     {open && <div className="picker-menu">
       <label className="picker-search search-field"><span className="sr-only">Поиск техники</span><input type="search" value={query} maxLength={64} placeholder="Найти технику…" onChange={event => { setQuery(event.target.value); setPage(0); }} /></label>
       <div className="picker-options" role="listbox" aria-label="Техника">
-      <button type="button" role="option" aria-selected={!selected} onClick={() => choose('')}>Вся техника</button>
-      {filtered.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE).map(vehicle => <button type="button" role="option" aria-selected={selected === vehicle.name}
-        key={vehicle.name} title={vehicleLabel(vehicle.name, vehicle.label)} onClick={() => choose(vehicle.name)}><span className="picker-label">{vehicleLabel(vehicle.name, vehicle.label)}</span><span className="muted">{vehicle.battles}</span></button>)}
+      <Button type="button" role="option" aria-selected={!selected} onClick={() => choose('')}>Вся техника</Button>
+      {filtered.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE).map(vehicle => <Button type="button" role="option" aria-selected={selected === vehicle.name}
+        key={vehicle.name} title={vehicleLabel(vehicle.name, vehicle.label)} onClick={() => choose(vehicle.name)}><span className="picker-label">{vehicleLabel(vehicle.name, vehicle.label)}</span><span className="muted">{vehicle.battles}</span></Button>)}
       </div>
       {filtered.length === 0 && <p className="picker-empty" role="status">Совпадений нет</p>}
       {pages > 1 && <div className="page-controls picker-pages">
-        <button type="button" aria-label="Предыдущая страница техники" disabled={current === 0} onClick={() => setPage(current - 1)}>Назад</button>
+        <Button type="button" aria-label="Предыдущая страница техники" disabled={current === 0} onClick={() => setPage(current - 1)}>Назад</Button>
         <span>{String(current + 1) + ' / ' + pages}</span>
-        <button type="button" aria-label="Следующая страница техники" disabled={current + 1 >= pages} onClick={() => setPage(current + 1)}>Далее</button>
+        <Button type="button" aria-label="Следующая страница техники" disabled={current + 1 >= pages} onClick={() => setPage(current + 1)}>Далее</Button>
       </div>}
     </div>}
   </div>;
