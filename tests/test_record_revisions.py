@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -13,6 +14,7 @@ sys.path.insert(0, os.path.join(ROOT, 'tools'))
 from tanksession_analytics.core import validate_record, normalize_result, MAX_RECORD_INTEGER
 from tanksession_analytics.storage import BattleStore, PendingJournal
 from tanksession_analytics.recorder import ResultRecorder
+import maintain_data
 from maintain_data import inspect, compact
 
 
@@ -183,6 +185,111 @@ class RevisionTests(unittest.TestCase):
 
 
 class JournalDiagnosticsTests(unittest.TestCase):
+    def test_compaction_accepts_different_path_and_handle_ctime_without_losing_backup(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, 'battles.jsonl')
+            store = BattleStore(path)
+            store.upsert(snapshot())
+            store.upsert(snapshot(damage=1000))
+            with open(path, 'rb') as stream:
+                original_bytes = stream.read()
+            real_fstat = os.fstat
+            real_copy = maintain_data.shutil.copyfileobj
+            real_replace = os.replace
+            copied_sources = []
+            def different_handle_ctime(fd):
+                value = real_fstat(fd)
+                # Model Windows: the identity/size/mtime agree, but path ctime
+                # is creation time and handle ctime is later metadata change.
+                return types.SimpleNamespace(st_dev=value.st_dev, st_ino=value.st_ino,
+                    st_size=value.st_size, st_mtime_ns=value.st_mtime_ns,
+                    st_ctime_ns=value.st_ctime_ns + 1000000000)
+            def copy(source, destination):
+                copied_sources.append(source)
+                return real_copy(source, destination)
+            def replace(source, destination):
+                self.assertTrue(copied_sources[0].closed)
+                self.assertEqual(destination, path)
+                return real_replace(source, destination)
+            with mock.patch.object(maintain_data.os, 'fstat', side_effect=different_handle_ctime), \
+                    mock.patch.object(maintain_data.shutil, 'copyfileobj', side_effect=copy), \
+                    mock.patch.object(maintain_data.os, 'replace', side_effect=replace):
+                details = compact(path)
+            self.assertEqual(details['records'], 1)
+            self.assertEqual(BattleStore(path).records, store.records)
+            with open(details['backup'], 'rb') as stream:
+                self.assertEqual(stream.read(), original_bytes)
+
+    def test_compaction_rejects_append_while_reading_and_keeps_updated_original(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, 'battles.jsonl')
+            BattleStore(path).upsert(snapshot())
+            extra = (json.dumps(snapshot(arena_id='100', damage=200)) + '\n').encode('utf-8')
+            def read_then_append(source):
+                store = BattleStore(source)
+                with open(source, 'ab') as stream:
+                    stream.write(extra)
+                return store
+            with mock.patch.object(maintain_data, 'BattleStore', side_effect=read_then_append), \
+                    mock.patch.object(maintain_data.os, 'replace') as replacement:
+                with self.assertRaisesRegex(RuntimeError, 'changed while compacting'):
+                    compact(path)
+                replacement.assert_not_called()
+            self.assertEqual(len(BattleStore(path).records), 2)
+            self.assertEqual(os.listdir(folder), ['battles.jsonl'])
+
+    def test_compaction_rejects_append_during_backup_before_replacement(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, 'battles.jsonl')
+            BattleStore(path).upsert(snapshot())
+            with open(path, 'rb') as stream:
+                original_bytes = stream.read()
+            extra = (json.dumps(snapshot(arena_id='100', damage=200)) + '\n').encode('utf-8')
+            real_copy = maintain_data.shutil.copyfileobj
+            def copy_then_append(source, destination):
+                real_copy(source, destination)
+                with open(path, 'ab') as stream:
+                    stream.write(extra)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+            with mock.patch.object(maintain_data.shutil, 'copyfileobj', side_effect=copy_then_append), \
+                    mock.patch.object(maintain_data.os, 'replace') as replacement:
+                with self.assertRaisesRegex(RuntimeError, 'changed during backup'):
+                    compact(path)
+                replacement.assert_not_called()
+            with open(path, 'rb') as stream:
+                self.assertEqual(stream.read(), original_bytes + extra)
+            backups = [name for name in os.listdir(folder) if '.backup-' in name]
+            self.assertEqual(len(backups), 1)
+            with open(os.path.join(folder, backups[0]), 'rb') as stream:
+                self.assertEqual(stream.read(), original_bytes)
+            self.assertFalse(any(name.startswith('.tanksession-') for name in os.listdir(folder)))
+
+    def test_compaction_keeps_handle_change_time_guard_even_when_path_state_is_unchanged(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, 'battles.jsonl')
+            BattleStore(path).upsert(snapshot(damage=1000))
+            real_fstat = os.fstat
+            real_copy = maintain_data.shutil.copyfileobj
+            copied = []
+            def handle_change_time(fd):
+                value = real_fstat(fd)
+                # A ctime-only change must still be detected even on Windows,
+                # whose path-level creation timestamp remains unchanged.
+                return types.SimpleNamespace(st_dev=value.st_dev, st_ino=value.st_ino,
+                    st_size=value.st_size, st_mtime_ns=value.st_mtime_ns,
+                    st_ctime_ns=123000000000 + (1 if copied else 0))
+            def copy_then_change(source, destination):
+                real_copy(source, destination)
+                copied.append(True)
+            with mock.patch.object(maintain_data.os, 'fstat', side_effect=handle_change_time), \
+                    mock.patch.object(maintain_data.shutil, 'copyfileobj', side_effect=copy_then_change), \
+                    mock.patch.object(maintain_data.os, 'replace') as replacement:
+                with self.assertRaisesRegex(RuntimeError, 'changed during backup'):
+                    compact(path)
+                replacement.assert_not_called()
+            self.assertEqual(BattleStore(path).records[0]['damage'], 1000)
+
     def test_offline_compaction_keeps_additional_xp_evidence_and_backup(self):
         with tempfile.TemporaryDirectory() as folder:
             path = os.path.join(folder, 'battles.jsonl')

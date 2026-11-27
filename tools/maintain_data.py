@@ -35,6 +35,15 @@ def _signature(stat):
             stat.st_mtime_ns, stat.st_ctime_ns)
 
 
+def _same_opened_file(by_path, by_handle):
+    # CPython 3.12 on Windows exposes creation time through stat(path).ctime
+    # but change time through fstat(fd).ctime. Compare ctime only with an
+    # earlier observation from the SAME API; keep it in both signatures.
+    return (os.path.samestat(by_path, by_handle) and
+            by_path.st_size == by_handle.st_size and
+            by_path.st_mtime_ns == by_handle.st_mtime_ns)
+
+
 def compact(path):
     """Backup original + atomic replacement, only with an explicit user action.
 
@@ -46,36 +55,44 @@ def compact(path):
         raise ValueError('Expected an existing regular non-symlink file')
     path = os.path.abspath(path)
     before = os.stat(path)
-    store = BattleStore(path)
-    rows = store.compacted_records()
-    folder = os.path.dirname(path)
-    fd, candidate = tempfile.mkstemp(prefix='.tanksession-', suffix='.tmp', dir=folder)
+    candidate = None
     try:
-        with os.fdopen(fd, 'wb') as out:
-            for row in rows:
-                out.write((json.dumps(row, ensure_ascii=False, sort_keys=True,
-                                      allow_nan=False) + '\n').encode('utf-8'))
-            out.flush()
-            os.fsync(out.fileno())
-        current = os.stat(path)
-        if _signature(current) != _signature(before):
-            raise RuntimeError('Journal changed while compacting; original untouched')
-        stamp = datetime.now().strftime('%Y%m%d-%H%M%S-%f')
-        backup = path + '.backup-' + stamp
-        # Exclusive backup creation prevents a previous backup being overwritten.
-        with open(path, 'rb') as original, open(backup, 'xb') as saved:
-            if _signature(os.fstat(original.fileno())) != _signature(before):
-                raise RuntimeError('Journal changed before backup; original untouched')
-            shutil.copyfileobj(original, saved)
-            saved.flush()
-            os.fsync(saved.fileno())
+        with open(path, 'rb') as original:
+            opened_before = os.fstat(original.fileno())
+            if not _same_opened_file(before, opened_before):
+                raise RuntimeError('Journal changed before reading; original untouched')
+            store = BattleStore(path)
+            rows = store.compacted_records()
+            folder = os.path.dirname(path)
+            fd, candidate = tempfile.mkstemp(prefix='.tanksession-', suffix='.tmp', dir=folder)
+            with os.fdopen(fd, 'wb') as out:
+                for row in rows:
+                    out.write((json.dumps(row, ensure_ascii=False, sort_keys=True,
+                                          allow_nan=False) + '\n').encode('utf-8'))
+                out.flush()
+                os.fsync(out.fileno())
+            if (_signature(os.stat(path)) != _signature(before) or
+                    _signature(os.fstat(original.fileno())) != _signature(opened_before)):
+                raise RuntimeError('Journal changed while compacting; original untouched')
+            stamp = datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+            backup = path + '.backup-' + stamp
+            # Exclusive creation + fsync keep the original recoverable before
+            # any replacement. Recheck the opened source after copying too.
+            with open(backup, 'xb') as saved:
+                shutil.copyfileobj(original, saved)
+                saved.flush()
+                os.fsync(saved.fileno())
+            if _signature(os.fstat(original.fileno())) != _signature(opened_before):
+                raise RuntimeError('Journal changed during backup; original untouched')
+        # Windows cannot replace a file held by a normal Python read handle.
+        # Close it first, then retain the final independent path check.
         if _signature(os.stat(path)) != _signature(before):
             raise RuntimeError('Journal changed during backup; original untouched')
         os.replace(candidate, path)
         return {'backup': backup, 'records': len(store.records), 'bytes': os.path.getsize(path),
                 'diagnostics_before': dict(store.diagnostics)}
     finally:
-        if os.path.exists(candidate):
+        if candidate is not None and os.path.exists(candidate):
             os.unlink(candidate)
 
 

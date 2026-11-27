@@ -50,7 +50,7 @@ test('native transport keeps the history pager below all rows and card counters 
   expect(await open.evaluate(button => getComputedStyle(button).color)).not.toBe('rgb(0, 0, 0)');
   expect(await open.evaluate(button => parseFloat(getComputedStyle(button).fontSize))).toBeGreaterThanOrEqual(14);
   await mkdir('test-results', { recursive: true });
-  await page.screenshot({ path: 'test-results/hangar-native-compat-history.png' });
+  await page.screenshot({ path: 'test-results/hangar-native-compat-history.png', animations: 'disabled' });
 
   await page.getByRole('button', { name: 'Аналитика', exact: true }).click();
   await page.getByRole('button', { name: 'Техника', exact: true }).click();
@@ -58,7 +58,7 @@ test('native transport keeps the history pager below all rows and card counters 
   expect(await counter.evaluate(element => element.childNodes.length)).toBe(1);
   await expect(counter).toHaveText(/^1 \/ \d+$/);
   expect(await counter.evaluate(element => getComputedStyle(element).whiteSpace)).toBe('nowrap');
-  await page.screenshot({ path: 'test-results/hangar-native-compat-vehicles.png' });
+  await page.screenshot({ path: 'test-results/hangar-native-compat-vehicles.png', animations: 'disabled' });
 });
 
 test('native wheel is canceled once, scrolls in the corrected direction and has reachable button and keyboard alternatives', async ({ page }) => {
@@ -82,7 +82,7 @@ test('native wheel is canceled once, scrolls in the corrected direction and has 
   await page.keyboard.press('End');
   await expect.poll(() => area.evaluate(element => element.scrollTop >= element.scrollHeight - element.clientHeight - 1)).toBe(true);
   await expect(down).toBeInViewport();
-  await page.screenshot({ path: 'test-results/hangar-native-compat-report-bottom.png' });
+  await page.screenshot({ path: 'test-results/hangar-native-compat-report-bottom.png', animations: 'disabled' });
   await page.keyboard.press('Home');
   await expect.poll(() => area.evaluate(element => element.scrollTop)).toBe(0);
 });
