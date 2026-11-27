@@ -184,13 +184,13 @@ python tools/package_release.py --tag v2.0.0-rc3
 
 ## Интерфейс 2.0
 
-![Аналитика по картам и технике в 2.0.0-rc2](docs/images/hangar-v2-analytics.png)
+![Аналитика по картам и технике 2.0.0-rc3 в Chromium на вымышленных данных](docs/images/hangar-v2-analytics.png)
 
-*Настоящий React-интерфейс **2.0.0-rc2** в Chromium на вымышленных данных. Снимки из успешного [CI 46038083441](https://github.com/xeemoff/tanksession-analytics/actions/runs/46038083441), коммит `8865811`; PNG сохранены без преобразования. Нативный Gameface проверяется отдельно.*
+*Настоящий React-интерфейс **2.0.0-rc3** в Chromium на вымышленных данных. Источник — успешный [push CI 46047875821](https://github.com/xeemoff/tanksession-analytics/actions/runs/46047875821), коммит [`816b79855f4175fbf3277eef93b823b25007f3ea`](https://github.com/xeemoff/tanksession-analytics/commit/816b79855f4175fbf3277eef93b823b25007f3ea): восемь заданий прошли, включая 63 Node-теста и 26 браузерных сценариев. Десять PNG 1120 × 800 скопированы без изменения байтов из артефакта `15222269293`; SHA-256 его ZIP — `5d8e1175bd71ecb32022ce0254c3a018a0fd6d564487ed25d0e29ed8d052e144`. Галерея включает имитацию Gameface API; встроенный игровой движок проверяется отдельно.*
 
 | Карточки техники | Светлая тема |
 |---|---|
-| ![Карточки и иллюстрации классов техники](docs/images/hangar-v2-vehicles.png) | ![Светлая тема и настройка блоков](docs/images/hangar-v2-light-dashboard.png) |
+| ![Карточки и иллюстрации классов техники RC3 на вымышленных данных](docs/images/hangar-v2-vehicles.png) | ![Светлая тема и настройка блоков RC3 в Chromium](docs/images/hangar-v2-light-dashboard.png) |
 
 [Галерея](docs/SCREENSHOTS_RU.md) также показывает календарь, отчёт и наблюдения Coach; прежние версии сохранены в архивном разделе.
 
