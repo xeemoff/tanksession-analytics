@@ -225,6 +225,7 @@ function Install-TankSessionBundle([string]$Directory, [string]$Path, [string]$V
     $backupPath = $null
     $backups = @()
     $installed = $false
+    $historyBackup = $null
     try {
         try { $lock = [IO.File]::Open($lockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
         catch { throw 'Другой установщик уже работает или нет доступа к папке mods.' }
@@ -233,6 +234,10 @@ function Install-TankSessionBundle([string]$Directory, [string]$Path, [string]$V
             $_.Name -cmatch '^ru\.tanksession\.analytics_[0-9A-Za-z._-]+\.mtmod$'
         })
         foreach ($old in $oldPackages) { Assert-TankSessionRegularPath $old.FullName }
+        if (@(Get-TankSessionDataFiles (Get-TankSessionDataRoot $Path)).Count -gt 0) {
+            $historyBackup = (New-TankSessionBackupPath $Path 'data') + '.zip'
+            $null = Write-TankSessionHistorySnapshot $Path $historyBackup
+        }
         Copy-Item -LiteralPath (Join-Path $Directory $manifest.package) -Destination $temporary
         if ((Get-TankSessionHash $temporary) -cne $manifest.sha256.ToLowerInvariant()) { throw 'Ошибка проверки временной копии.' }
         if ($oldPackages.Count -gt 0) {
@@ -247,6 +252,10 @@ function Install-TankSessionBundle([string]$Directory, [string]$Path, [string]$V
                 if ((Get-TankSessionHash $copy) -cne $oldHash) { throw 'Ошибка проверки резервной копии.' }
                 $backups += [PSCustomObject]@{ Original = $old.FullName; Copy = $copy; Hash = $oldHash }
             }
+            $backupManifest = @{ schema = 1; kind = 'tanksession-packages'; client_version = $Version;
+                files = @($backups | ForEach-Object { @{ name = [IO.Path]::GetFileName($_.Copy); sha256 = $_.Hash } }) }
+            [IO.File]::WriteAllText((Join-Path $backupPath 'backup-manifest.json'),
+                ($backupManifest | ConvertTo-Json -Depth 5), (New-Object Text.UTF8Encoding $false))
         }
         Assert-TankSessionGameStopped
         foreach ($backup in $backups) {
@@ -256,7 +265,7 @@ function Install-TankSessionBundle([string]$Directory, [string]$Path, [string]$V
         Move-Item -LiteralPath $temporary -Destination $target
         $installed = $true
         if ((Get-TankSessionHash $target) -cne $manifest.sha256.ToLowerInvariant()) { throw 'Ошибка итоговой проверки.' }
-        return [PSCustomObject]@{ Status = 'installed'; Version = $manifest.version; ExistingPackages = $oldPackages.Count; Backup = $backupPath }
+        return [PSCustomObject]@{ Status = 'installed'; Version = $manifest.version; ExistingPackages = $oldPackages.Count; Backup = $backupPath; HistoryBackup = $historyBackup }
     } catch {
         $originalError = $_
         $rollbackErrors = @()
@@ -291,6 +300,7 @@ function Invoke-TankSessionInstaller {
             Write-Host ('Установлен TankSession Analytics ' + $result.Version)
             Write-Host 'История, настройки и остальные моды сохранены.'
             if ($result.Backup) { Write-Host ('Предыдущие пакеты: ' + $result.Backup) }
+            if ($result.HistoryBackup) { Write-Host ('Копия истории и настроек: ' + $result.HistoryBackup) }
         }
         Write-Host 'Статус совместимости, Gameface и известные ограничения — в INSTALL_RU.md и RELEASE_NOTES_RU.md.'
         exit 0
@@ -299,6 +309,8 @@ function Invoke-TankSessionInstaller {
         exit 1
     }
 }
+
+. (Join-Path $PSScriptRoot 'Data-TankSession.ps1')
 
 # Dot-sourcing exposes pure checks/transaction functions for Windows CI.
 if ($MyInvocation.InvocationName -ne '.') { Invoke-TankSessionInstaller }

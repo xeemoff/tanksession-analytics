@@ -131,7 +131,9 @@ export class HttpBridge implements Bridge {
     const xhr = new XMLHttpRequest();
     this.active = xhr;
     const query = 'window=' + request.window + '&vehicle=' + encodeURIComponent(request.vehicle)
-      + '&request_id=' + encodeURIComponent(request.request_id) + '&page=' + (request.page || 0);
+      + '&request_id=' + encodeURIComponent(request.request_id) + '&page=' + (request.page || 0)
+      + (request.history_query === undefined ? '' : '&history_query=' + encodeURIComponent(request.history_query))
+      + (request.history_sort === undefined ? '' : '&history_sort=' + encodeURIComponent(request.history_sort));
     const command = !!request.action;
     xhr.open(command ? 'POST' : 'GET', command ? '/api/command' : '/api/snapshot?' + query, true);
     xhr.timeout = 10000;

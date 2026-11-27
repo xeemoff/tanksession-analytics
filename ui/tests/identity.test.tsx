@@ -19,6 +19,7 @@ function identitySnapshot(): Snapshot {
   value.history.forEach(row => { row.vehicle = key; row.vehicle_label = 'Т-34'; });
   value.coach!.vehicle = key;
   value.coach!.vehicle_label = 'Т-34';
+  value.coach!.goal_suggestions?.forEach(goal => { goal.vehicle = key; });
   value.goals.forEach(goal => { goal.vehicle = key; goal.vehicle_label = 'Т-34'; });
   value.insights!.tanks.forEach(row => { row.label = key; row.vehicle_label = 'Т-34'; });
   value.workspace!.preferences.vehicle = key;

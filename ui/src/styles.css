@@ -368,3 +368,339 @@ body.native-gameface, .native-gameface .page { background-color: transparent; }
   .section-tabs button { font-size: 12px; }
   .col-details { width: 12%; }
 }
+
+/* 2.0 uses the same restrained hangar palette, with explicit alternate themes. */
+h3 { margin: 0; color: #dfe7d8; font-size: 14px; line-height: 20px; font-weight: 600; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.screen-content, .progress-dashboard, .dashboard-panel, .analytics-view, .activity-view, .economy-view, .reports-view { display: flex; flex-direction: column; flex-shrink: 0; min-width: 0; }
+.screen-content { animation: panel-appear 140ms ease-out; }
+@keyframes panel-appear { from { opacity: 0.7; } to { opacity: 1; } }
+button { transition: background-color 130ms ease-out, border-color 130ms ease-out, color 130ms ease-out; }
+.section-tabs button { font-size: 12px; padding: 6px 8px; min-width: 0; }
+.section-description { color: #aebba5; font-size: 12px; line-height: 18px; margin-top: 4px; }
+.feature-tabs { margin-top: 0; margin-bottom: 12px; }
+.feature-tabs button { flex: 1 1 0; }
+.chart-footnote { display: block; color: #aebba5; font-size: 11px; line-height: 17px; margin-top: 9px; }
+.search-field { display: flex; flex-direction: column; min-width: 0; }
+.search-field input { font: inherit; font-size: 13px; color: #e6eddf; background: #151e18; border: 1px solid #657155; border-radius: 5px; height: 34px; min-width: 0; width: 100%; padding: 7px 10px; }
+.search-field input::placeholder { color: #a9b4a2; opacity: 1; }
+.search-field input:focus { outline: 2px solid #dfb875; outline-offset: 2px; }
+.picker-search { margin: 4px 4px 6px; }
+.picker-options { display: flex; flex-direction: column; }
+.picker-empty { padding: 8px; font-size: 12px; color: #b6c4aa; }
+.history-controls { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-top: 9px; }
+.history-search { display: flex; flex-direction: row; align-items: center; flex: 1 1 auto; min-width: 240px; margin-right: 12px; }
+.history-search .search-field { width: 250px; min-width: 120px; }
+.history-search > button { height: 34px; padding: 6px 10px; margin-left: 7px; font-size: 12px; }
+.history-sort { margin-top: 7px; margin-bottom: 7px; }
+.history-sort button { padding-left: 9px; padding-right: 9px; }
+.history-sort button + button { margin-left: 5px; }
+.history-no-results { display: flex; flex-direction: column; align-items: center; padding: 28px 16px; text-align: center; }
+.history-no-results strong { color: #d5dfc9; margin-bottom: 8px; }
+.history-no-results > span, .battle-metadata { display: block; font-size: 12px; line-height: 18px; color: #b4c1a9; }
+.battle-metadata { margin-top: 3px; }
+.trend-point { cursor: pointer; stroke: #1e261f; stroke-width: 1; }
+.trend-point:focus { outline: none; stroke: #f7e8be; stroke-width: 2; }
+.trend-point:hover { stroke: #f7e8be; stroke-width: 2; }
+.trend-selection { display: block; color: #e6cf9a; font-size: 12px; line-height: 18px; margin-top: 8px; }
+.dashboard-module-tabs { flex-wrap: wrap; margin: 0 0 10px; }
+.dashboard-module-tabs button { margin-bottom: 6px; font-size: 12px; }
+.dashboard-panel > .goal-card { width: auto; margin-left: 0; }
+.dashboard-panel > .vehicle-card { width: 100%; max-width: 680px; align-self: center; }
+.dashboard-panel > .trend-card { padding-bottom: 8px; }
+
+/* Selectable charts retain numerical values and keyboard access at every point. */
+.coverage-line { display: flex; flex-direction: column; margin: 7px 0; font-size: 11px; line-height: 16px; color: #b5c2aa; }
+.coverage-track { display: block; width: 100%; height: 3px; background: #354231; border-radius: 2px; margin-top: 4px; overflow: hidden; }
+.coverage-track > span { display: block; height: 100%; background: #b5bc89; }
+.group-chart { display: flex; flex-direction: column; min-width: 0; padding: 12px 14px; margin-top: 9px; border: 1px solid #44503c; border-radius: 7px; background: #202820; }
+.group-chart-toolbar { display: flex; flex-direction: row; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+.group-chart-toolbar h3 { margin-right: 10px; }
+.chart-metrics { margin-top: 0; }
+.chart-metrics button { font-size: 11px; padding: 4px 8px; min-height: 29px; }
+.chart-metrics button + button { margin-left: 5px; }
+.group-order { display: flex; flex-direction: row; align-items: center; margin: 1px 0 7px; }
+.group-order > span { font-size: 10px; color: #aebba5; margin-right: 8px; }
+.group-order button { font-size: 10px; padding: 4px 8px; margin-right: 5px; }
+.group-chart-layout { display: flex; flex-direction: row; min-width: 0; align-items: stretch; margin-top: 5px; }
+.group-chart-bars { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; }
+.group-bar-row { display: flex; flex-direction: row; align-items: center; min-height: 31px; padding: 5px 7px; margin-bottom: 4px; border: 1px solid transparent; background: transparent; text-align: left; min-width: 0; }
+.group-bar-row.selected { background: #303629; border-color: #8d7c53; }
+.group-bar-label { display: block; width: 31%; padding-right: 10px; color: #d2ddc6; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+.group-bar-track { display: block; position: relative; flex: 1 1 0; min-width: 0; height: 15px; background: #19221b; overflow: hidden; }
+.group-bar-zero { display: block; position: absolute; top: 0; bottom: 0; width: 1px; background: #8a9980; }
+.group-bar-fill { display: block; position: absolute; top: 3px; height: 9px; background: #acb985; border-radius: 2px; }
+.group-bar-fill.negative-bar { background: #ca9686; }
+.group-bar-row > strong { display: block; width: 85px; padding-left: 8px; text-align: right; font-size: 12px; font-weight: 500; }
+.group-selection { display: flex; flex-direction: column; flex-shrink: 0; width: 29%; min-width: 200px; max-width: 280px; padding: 10px 12px; margin-left: 14px; border-left: 1px solid #4a533d; background: #242e22; }
+.group-selection .eyebrow { font-size: 9px; letter-spacing: 1px; }
+.group-selection h3 { color: #e4d2a7; margin-top: 5px; overflow-wrap: break-word; }
+.group-selection dl { display: flex; flex-direction: row; flex-wrap: wrap; margin: 8px 0 0; }
+.group-selection dl > div { width: 50%; padding: 0 7px 9px 0; }
+.group-selection dt { color: #b4c1a8; font-size: 10px; }
+.group-selection dd { color: #e3ead9; margin: 4px 0 0; font-size: 14px; font-weight: 600; }
+.group-selection .coverage-line { margin: 4px 0; font-size: 10px; }
+.activity-view .section-heading, .analytics-view > .section-heading { align-items: flex-start; }
+.activity-grid-wrap { display: flex; flex-direction: column; margin-top: 12px; }
+.activity-grid { display: flex; flex-direction: row; flex-wrap: wrap; margin-right: -4px; }
+.activity-cell { display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; width: 6.25%; min-width: 0; min-height: 40px; border-radius: 3px; border: 2px solid #243022; border-right-width: 4px; border-bottom-width: 4px; background: #1d281e; }
+.activity-grid-hours .activity-cell { width: 8.333%; min-height: 63px; }
+.activity-grid-weekdays .activity-cell { width: 14.285%; min-height: 100px; }
+.activity-cell.selected { outline: 2px solid #d4b16d; outline-offset: -3px; }
+.activity-intensity { display: block; position: absolute; bottom: 0; left: 0; width: 100%; background: #586942; }
+.activity-cell > span:not(.activity-intensity), .activity-cell > strong { position: relative; display: block; color: #edf0df; z-index: 1; }
+.activity-cell > span:not(.activity-intensity) { font-size: 10px; line-height: 14px; }
+.activity-cell > strong { font-size: 12px; line-height: 17px; }
+.activity-grid-weekdays .activity-cell > strong, .activity-grid-hours .activity-cell > strong { font-size: 20px; line-height: 27px; }
+.activity-cell.empty > strong { color: #a4b296; }
+.activity-selection { display: flex; flex-direction: row; flex-wrap: wrap; justify-content: space-between; padding: 10px 12px; margin-top: 10px; border: 1px solid #4a573e; border-radius: 5px; background: #283122; }
+.activity-selection > strong { display: block; font-size: 13px; color: #ead2a0; margin-right: 12px; }
+.activity-selection > span { display: block; font-size: 11px; line-height: 18px; color: #bac6ac; }
+
+/* These illustrations are original class diagrams, never screenshots or model portraits. */
+.vehicle-card-grid { display: flex; flex-direction: row; min-width: 0; margin-top: 12px; }
+.vehicle-card { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; padding: 13px; border: 1px solid #49563e; border-radius: 8px; background: #202b21; }
+.vehicle-card + .vehicle-card { margin-left: 12px; }
+.vehicle-card-selected { border-color: #a18a54; background: #2a2f22; }
+.vehicle-card-heading { display: flex; flex-direction: row; justify-content: space-between; align-items: center; }
+.vehicle-card .eyebrow { font-size: 9px; letter-spacing: 1px; }
+.vehicle-class-tag { display: block; color: #c1cca9; font-size: 10px; padding-left: 8px; }
+.vehicle-art { display: block; width: 100%; height: 115px; margin: 5px 0 3px; }
+.vehicle-art-grid { fill: none; stroke: #40503a; stroke-width: 0.5; opacity: 0.75; }
+.vehicle-art-track { fill: #111b15; stroke: #83936d; stroke-width: 1.5; }
+.vehicle-art-wheel { fill: #2a3928; stroke: #82906b; stroke-width: 1; }
+.vehicle-art-hull { fill: #758664; stroke: #acb88e; stroke-width: 1; }
+.vehicle-art-turret { fill: #8a9a71; stroke: #c2cca2; stroke-width: 1; }
+.vehicle-art-detail { fill: none; stroke: #d4d5ab; stroke-width: 1; opacity: 0.8; }
+.vehicle-art-unknown { font-size: 24px; fill: #d0c197; }
+.vehicle-card-name h3 { font-size: 17px; color: #ead5a6; overflow-wrap: break-word; }
+.vehicle-card-name > span { display: block; color: #b4c1a7; font-size: 12px; margin-top: 5px; }
+.vehicle-card-footer { display: flex; flex-direction: row; justify-content: space-between; align-items: center; margin-top: 13px; padding-top: 10px; border-top: 1px solid #46523b; }
+.vehicle-card-footer > span { display: block; font-size: 10px; color: #adba9f; }
+.vehicle-card-footer strong { color: #e2e9d6; font-size: 15px; }
+.vehicle-card-footer button { padding: 6px 9px; font-size: 11px; }
+.vehicle-art-note { color: #a8b49b; font-size: 10px; line-height: 15px; margin-top: 10px; }
+.vehicle-collection .search-field { width: 255px; margin-left: 15px; }
+
+/* Period reports and signed economy preserve coverage alongside every total. */
+.economy-totals { display: flex; flex-direction: row; margin-top: 11px; }
+.economy-total { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; padding: 12px 14px; border: 1px solid #4d563d; border-radius: 6px; background: #272d22; }
+.economy-total + .economy-total { margin-left: 10px; }
+.economy-total .eyebrow { font-size: 10px; letter-spacing: 1px; }
+.economy-total > strong { font-size: 24px; line-height: 30px; color: #e9d4a1; margin: 6px 0 3px; overflow-wrap: break-word; }
+.economy-total > strong.negative { color: #dca796; }
+.economy-average, .economy-total > p { display: block; color: #b5c2a8; font-size: 11px; line-height: 17px; }
+.report-range, .report-previous-range { color: #b5c2a9; font-size: 11px; line-height: 17px; margin-top: 5px; }
+.report-totals { display: flex; flex-direction: row; margin-top: 8px; padding-bottom: 8px; border-bottom: 1px solid #46513c; }
+.report-totals > article { display: flex; flex: 1 1 0; flex-direction: column; padding: 6px 12px; border-left: 1px solid #46513c; }
+.report-totals > article:first-child { border-left: 0; padding-left: 0; }
+.report-totals article > span { font-size: 10px; letter-spacing: 1px; color: #b5c2a9; }
+.report-totals strong { color: #e6d3a6; font-size: 26px; line-height: 32px; margin-top: 2px; }
+.report-totals small { color: #aebb9e; font-size: 10px; margin-top: 1px; }
+.report-comparison { margin-top: 10px; }
+.report-status { font-size: 10px; color: #d1ba83; }
+.report-ready { color: #b5ce94; }
+.report-table { margin-top: 5px; }
+.report-table .history-row > span { width: 22%; flex-shrink: 0; flex-direction: column; align-items: flex-end; justify-content: center; font-size: 12px; }
+.report-table .history-row > span:first-child { flex: 1 1 0; width: auto; align-items: flex-start; }
+.report-table .history-row small { display: block; color: #a8b79d; font-size: 9px; line-height: 13px; }
+.report-table .history-row { min-height: 38px; padding: 4px 8px; }
+.report-economy .economy-total { padding-top: 9px; padding-bottom: 5px; }
+.report-economy .economy-total > strong { font-size: 21px; line-height: 26px; margin-top: 4px; }
+.report-economy .coverage-line { margin-bottom: 3px; }
+.report-warning { color: #e9c890; border-left: 2px solid #a78a53; padding-left: 10px; font-size: 12px; line-height: 18px; margin-top: 9px; }
+
+.coach-foot-actions { display: flex; flex-direction: row; flex-shrink: 0; }
+.coach-evidence-view { display: flex; flex-direction: column; margin-top: 10px; }
+.observation-grid { display: flex; flex-direction: row; }
+.observation-card { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; border-right: 1px solid #55573d; padding: 0 10px; }
+.observation-card:first-child { padding-left: 0; }
+.observation-card:last-child { border-right: 0; padding-right: 0; }
+.observation-card > span { font-size: 11px; line-height: 16px; color: #c2c9aa; }
+.observation-card strong { font-size: 21px; line-height: 28px; color: #ead1a0; margin-top: 4px; }
+.observation-card p, .observation-card small { color: #b3bda0; font-size: 10px; line-height: 16px; }
+.consistency-card { padding: 10px 12px; margin-top: 12px; border: 1px solid #555b3f; border-radius: 5px; background: #252c20; }
+.consistency-values { display: flex; flex-direction: row; margin: 8px 0; }
+.consistency-values > div { display: flex; flex-direction: column; flex: 1 1 0; padding-right: 12px; }
+.consistency-values span { color: #bdc5a8; font-size: 10px; line-height: 16px; }
+.consistency-values strong { color: #e3d4ad; font-size: 15px; margin-top: 3px; }
+.consistency-card p, .coach-observation-empty { font-size: 11px; color: #b7c1a3; line-height: 17px; }
+.coach-observation-empty { margin-top: 10px; }
+.goal-suggestion { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 11px 12px; margin-top: 11px; border: 1px solid #877549; border-radius: 5px; background: #333222; }
+.goal-suggestion > div:first-child { flex: 1 1 0; min-width: 200px; }
+.goal-suggestion .eyebrow { color: #c4b68d; font-size: 9px; letter-spacing: 1px; }
+.goal-suggestion h3 { margin-top: 4px; color: #efdaab; }
+.goal-suggestion p { font-size: 11px; line-height: 17px; color: #c3c5a8; margin-top: 4px; }
+.goal-suggestion > button { font-size: 12px; padding: 8px 12px; margin-left: 15px; border-color: #a28b58; }
+.goal-confirmation { display: flex; flex-direction: column; width: 100%; border-top: 1px solid #716744; margin-top: 9px; padding-top: 5px; }
+.goal-confirmation > div { display: flex; flex-direction: row; align-items: center; }
+.goal-confirmation button { padding: 7px 12px; font-size: 12px; margin-top: 8px; margin-right: 10px; }
+
+.appearance-pages { margin-top: 0; margin-bottom: 12px; }
+.theme-options { display: flex; flex-direction: row; }
+.theme-choice { display: flex; flex: 1 1 0; flex-direction: column; text-align: left; padding: 14px; border: 1px solid #556347; background: #242e23; }
+.theme-choice + .theme-choice { margin-left: 12px; }
+.theme-choice.selected { border: 2px solid #d9b46e; padding: 13px; }
+.theme-choice > strong { display: block; color: #e4dec5; font-size: 14px; margin-top: 10px; }
+.theme-choice > span:last-child { display: block; color: #b5c0a7; font-size: 11px; line-height: 17px; margin-top: 4px; }
+.theme-swatches { display: flex; flex-direction: row; height: 35px; width: 100%; }
+.theme-swatches > span { display: block; width: 33.33%; background: #1a231c; }
+.theme-swatches > span:nth-child(2) { background: #9cae81; }
+.theme-swatches > span:nth-child(3) { background: #d4b16d; }
+.theme-choice-slate .theme-swatches > span:first-child { background: #18232c; }
+.theme-choice-slate .theme-swatches > span:nth-child(2) { background: #93b8cb; }
+.theme-choice-slate .theme-swatches > span:nth-child(3) { background: #ddd6a8; }
+.theme-choice-light .theme-swatches > span:first-child { background: #f1f2e8; }
+.theme-choice-light .theme-swatches > span:nth-child(2) { background: #344b3e; }
+.theme-choice-light .theme-swatches > span:nth-child(3) { background: #84602c; }
+.motion-label { margin-top: 16px; }
+.module-settings { display: flex; flex-direction: row; flex-wrap: wrap; margin-top: 11px; }
+.module-setting { display: flex; flex-direction: row; width: 49%; margin-right: 1%; margin-bottom: 7px; border: 1px solid #46523b; border-radius: 5px; background: #202920; }
+.module-setting.enabled { border-color: #7a7850; background: #2c3425; }
+.module-toggle { display: flex; flex-direction: row; align-items: center; flex: 1 1 0; min-width: 0; padding: 8px 9px; border: 0; background: transparent; text-align: left; }
+.module-toggle > span { display: block; width: 19px; color: #d7c38e; font-size: 17px; }
+.module-toggle > strong { display: block; color: #d7dfc8; font-size: 12px; font-weight: 500; flex: 1 1 auto; }
+.module-toggle small { color: #a8b79b; font-size: 9px; margin-left: 5px; }
+.module-order { display: flex; flex-direction: row; align-items: center; padding-right: 4px; }
+.module-order button { width: 24px; height: 26px; margin-left: 3px; font-size: 13px; }
+
+/* Graphite theme: separate backgrounds, readable secondary text, no color-only verdicts. */
+.page.theme-slate { background: #101820; }
+.panel.theme-slate { color: #e2edf4; background: #19232b; border-color: #526573; }
+.theme-slate .panel-header, .theme-slate .panel-footer, .theme-slate .history-head { background: #1d2b35; border-color: #425563; }
+.theme-slate button, .theme-slate .picker-trigger, .theme-slate .period-buttons button { background: #263743; color: #dceaf2; border-color: #566c7b; }
+.theme-slate button:hover { background: #354b59; }
+.theme-slate button.active, .theme-slate button[aria-pressed="true"], .theme-slate .group-bar-row.selected { background: #3c4d53; color: #f5dfac; border-color: #b49d64; }
+.theme-slate .metric-card, .theme-slate .trend-card, .theme-slate .goal-card, .theme-slate .settings-card, .theme-slate .detail-metric,
+.theme-slate .insight-card, .theme-slate .group-chart, .theme-slate .vehicle-card, .theme-slate .economy-total, .theme-slate .picker-menu { background: #22313b; border-color: #536773; }
+.theme-slate .coach-card, .theme-slate .metric-emphasis { background: #30383a; border-color: #a18c5d; }
+.theme-slate .group-selection, .theme-slate .consistency-card, .theme-slate .coach-explanation, .theme-slate .module-setting { background: #23343f; border-color: #526a78; }
+.theme-slate .goal-suggestion, .theme-slate .module-setting.enabled { background: #35413f; }
+.theme-slate .history-scroll .history-row:nth-child(even), .theme-slate .group-bar-track { background: #1b2a34; }
+.theme-slate .search-field input, .theme-slate .settings-input input { background: #13232e; color: #ecf4f8; border-color: #819aaa; }
+.theme-slate .muted, .theme-slate .small, .theme-slate .field-label, .theme-slate .eyebrow, .theme-slate .subtle-tag, .theme-slate .trend-note,
+.theme-slate .chart-footnote, .theme-slate .section-description, .theme-slate .metric-detail, .theme-slate .coverage-line, .theme-slate .economy-average,
+.theme-slate .report-range, .theme-slate .report-previous-range, .theme-slate .vehicle-art-note, .theme-slate .vehicle-card-name > span,
+.theme-slate .observation-card p, .theme-slate .observation-card small, .theme-slate .consistency-card p, .theme-slate .goal-suggestion p,
+.theme-slate .coach-foot p, .theme-slate .coach-evidence, .theme-slate .coach-coverage, .theme-slate .coach-record p { color: #b9ccd8; }
+.theme-slate .coverage-track { background: #3b5261; }
+.theme-slate .coverage-track > span, .theme-slate .group-bar-fill { background: #a2c1cf; }
+.theme-slate .negative-bar { background: #d6a18d; }
+.theme-slate .positive { color: #b5d7ba; }
+.theme-slate .negative { color: #e5b0a0; }
+.theme-slate .activity-cell { background: #20313d; border-color: #19232b; }
+.theme-slate .activity-intensity { background: #486578; }
+.theme-slate .activity-selection { background: #22343e; border-color: #718995; }
+
+/* Light theme uses dark text throughout, including secondary data and feedback. */
+.page.theme-light { background: #dce2d8; }
+.panel.theme-light { color: #253c2e; background: #f5f6ef; border-color: #87957e; }
+.theme-light .panel-header, .theme-light .panel-footer, .theme-light .history-head { background: #e7ecdf; border-color: #a6b39c; color: #42543a; }
+.theme-light button, .theme-light .icon-button.refresh, .theme-light .picker-trigger, .theme-light .period-buttons button { color: #30472f; background: #e9eddf; border-color: #98a688; }
+.theme-light button:hover { background: #dbe3cc; border-color: #617744; }
+.theme-light button.active, .theme-light button[aria-pressed="true"], .theme-light .group-bar-row.selected { color: #4b3510; background: #e9d7af; border-color: #8e692e; }
+.theme-light button:focus, .theme-light input:focus { outline-color: #81591e; }
+.theme-light h1, .theme-light h2, .theme-light h3, .theme-light .picker-label, .theme-light .metric-value,
+.theme-light .goal-values strong, .theme-light .goal-vehicle strong, .theme-light .group-selection dd, .theme-light .module-toggle > strong { color: #263f2c; }
+.theme-light .metric-card, .theme-light .trend-card, .theme-light .goal-card, .theme-light .settings-card, .theme-light .detail-metric,
+.theme-light .insight-card, .theme-light .group-chart, .theme-light .vehicle-card, .theme-light .economy-total, .theme-light .picker-menu,
+.theme-light .theme-choice { background: #edf1e5; border-color: #a2af94; }
+.theme-light .coach-card, .theme-light .metric-emphasis, .theme-light .vehicle-card-selected { background: #eee8d3; border-color: #a08a57; }
+.theme-light .group-selection, .theme-light .consistency-card, .theme-light .coach-explanation, .theme-light .module-setting { background: #e5ebdb; border-color: #9aa98a; }
+.theme-light .goal-suggestion, .theme-light .module-setting.enabled { background: #eee3c7; border-color: #a78c51; }
+.theme-light .history-scroll .history-row:nth-child(even), .theme-light .group-bar-track { background: #e3e9d8; }
+.theme-light .history-row, .theme-light .coach-comparison-row, .theme-light .coach-records, .theme-light .coach-record + .coach-record,
+.theme-light .trend-note, .theme-light .report-totals, .theme-light .vehicle-card-footer, .theme-light .group-selection { border-color: #a7b295; }
+.theme-light .search-field input, .theme-light .settings-input input { background: #fbfcf7; color: #253c2e; border-color: #80916f; }
+.theme-light .search-field input::placeholder { color: #56694a; }
+.theme-light .muted, .theme-light .small, .theme-light .field-label, .theme-light .eyebrow, .theme-light .subtle-tag,
+.theme-light .trend-note, .theme-light .chart-footnote, .theme-light .section-description, .theme-light .metric-detail,
+.theme-light .quality-line, .theme-light .detail-metric > span, .theme-light .detail-metric > small, .theme-light .insight-card p,
+.theme-light .insight-card > span, .theme-light .settings-description, .theme-light .brand p, .theme-light .brand-sub,
+.theme-light .coverage-line, .theme-light .economy-average, .theme-light .report-range, .theme-light .report-previous-range,
+.theme-light .report-table .history-row small, .theme-light .report-totals article > span, .theme-light .report-totals small,
+.theme-light .vehicle-art-note, .theme-light .vehicle-card-name > span, .theme-light .vehicle-card-footer > span,
+.theme-light .vehicle-class-tag, .theme-light .group-bar-label, .theme-light .group-selection dt, .theme-light .module-toggle small,
+.theme-light .theme-choice > span:last-child, .theme-light .consistency-values span, .theme-light .consistency-card p,
+.theme-light .observation-card > span, .theme-light .observation-card p, .theme-light .observation-card small,
+.theme-light .coach-foot p, .theme-light .coach-scope, .theme-light .coach-coverage, .theme-light .coach-record p,
+.theme-light .coach-record-label, .theme-light .coach-record-value > span, .theme-light .coach-evidence,
+.theme-light .coach-explanation p, .theme-light .coach-wait p, .theme-light .goal-suggestion p, .theme-light .coach-observation-empty,
+.theme-light .settings-input > span, .theme-light .goal-empty p, .theme-light .comparison-note, .theme-light .comparison-label,
+.theme-light .chart-axis, .theme-light .chart-range, .theme-light .damage-bar-number, .theme-light .battle-metadata { color: #455c38; }
+.theme-light .coach-scope strong, .theme-light .coach-choose strong, .theme-light .coach-wait strong, .theme-light .coach-comparison-row > strong,
+.theme-light .coach-count > span, .theme-light .chart-empty strong, .theme-light .theme-choice > strong { color: #314b2d; }
+.theme-light .metric-emphasis .metric-value, .theme-light .coach-card h2, .theme-light .coach-record-value > strong,
+.theme-light .detail-metric > strong, .theme-light .insight-card strong, .theme-light .economy-total > strong,
+.theme-light .report-totals strong, .theme-light .vehicle-card-name h3, .theme-light .vehicle-card-footer strong,
+.theme-light .group-selection h3, .theme-light .consistency-values strong, .theme-light .observation-card strong,
+.theme-light .goal-suggestion h3, .theme-light .session-verdict, .theme-light .damage-detail, .theme-light .trend-selection,
+.theme-light .editable-goal strong, .theme-light .coach-count > strong { color: #705118; }
+.theme-light .coverage-track { background: #c7d1b7; }
+.theme-light .coverage-track > span, .theme-light .group-bar-fill { background: #5b7545; }
+.theme-light .negative-bar { background: #9d4d34; }
+.theme-light .positive, .theme-light .result-win { color: #315b2c; }
+.theme-light .negative, .theme-light .result-loss, .theme-light .economy-total > strong.negative { color: #8e3e2a; }
+.theme-light .result-draw { color: #675117; }
+.theme-light .source-demo, .theme-light .report-warning { color: #684916; background: #f1e4c5; border-color: #9f8149; }
+.theme-light .operation-notice { color: #2c5228; background: #e1ecd6; border-color: #73965d; }
+.theme-light .operation-error { color: #7c3224; background: #f4e1d6; border-color: #b2775b; }
+.theme-light .report-status { color: #725218; }
+.theme-light .group-order > span { color: #455c38; }
+.theme-light .report-ready { color: #315b2c; }
+.theme-light .vehicle-art-grid { stroke: #8c9b7a; }
+.theme-light .vehicle-art-track { fill: #cbd4ba; stroke: #65764d; }
+.theme-light .vehicle-art-wheel { fill: #a8b48d; stroke: #566a3d; }
+.theme-light .vehicle-art-hull { fill: #819264; stroke: #435e30; }
+.theme-light .vehicle-art-turret { fill: #9aaa7b; stroke: #476133; }
+.theme-light .vehicle-art-unknown { fill: #705118; }
+.theme-light .trend-point { stroke: #3e512c; }
+.theme-light .trend-point:focus, .theme-light .trend-point:hover { stroke: #4a3512; }
+.theme-light .activity-cell { background: #edf2e5; border-color: #f5f6ef; }
+.theme-light .activity-intensity { background: #a5ba8e; }
+.theme-light .activity-cell > span:not(.activity-intensity), .theme-light .activity-cell > strong { color: #2d4523; }
+.theme-light .activity-selection { background: #e4ebd9; border-color: #8fa379; }
+.theme-light .activity-selection > strong { color: #5e4618; }
+.theme-light .activity-selection > span { color: #344d2b; }
+.theme-light.contrast-high { background: #ffffff; border-color: #334e24; }
+.theme-light.contrast-high .muted, .theme-light.contrast-high .small, .theme-light.contrast-high .trend-note, .theme-light.contrast-high .chart-footnote { color: #263f22; }
+.theme-slate.contrast-high { background: #101c24; border-color: #aac1cf; }
+
+@media (max-width: 940px) {
+  .section-tabs { flex-wrap: wrap; }
+  .section-tabs button { flex: 1 1 21%; margin-bottom: 6px; }
+  .section-tabs button + button { margin-left: 6px; }
+  .group-selection { min-width: 170px; width: 30%; margin-left: 8px; padding-left: 9px; padding-right: 9px; }
+  .vehicle-card { padding: 10px; }
+  .vehicle-card + .vehicle-card { margin-left: 8px; }
+  .vehicle-card-heading { flex-direction: column; align-items: flex-start; }
+  .vehicle-class-tag { margin-top: 4px; padding-left: 0; }
+  .vehicle-card-footer { flex-direction: column; align-items: flex-start; }
+  .vehicle-card-footer button { margin-top: 8px; }
+  .report-periods button { padding-left: 8px; padding-right: 8px; }
+}
+@media (max-width: 720px) {
+  .group-chart-layout { flex-direction: column; }
+  .group-selection { width: 100%; max-width: none; margin: 8px 0 0; border-left: 0; border-top: 1px solid #4a533d; }
+  .group-selection dl > div { width: 25%; }
+  .group-selection .coverage-line { display: none; }
+  .economy-totals, .theme-options, .vehicle-card-grid { flex-wrap: wrap; }
+  .economy-total, .theme-choice { flex-basis: 28%; padding-left: 9px; padding-right: 9px; }
+  .economy-total > strong { font-size: 20px; }
+  .vehicle-card { flex-basis: 45%; margin-bottom: 10px; }
+  .vehicle-card:nth-child(3) { margin-left: 0; }
+  .vehicle-collection .section-heading, .analytics-view > .section-heading, .activity-view .section-heading, .reports-view > .section-heading { flex-wrap: wrap; }
+  .vehicle-collection .search-field { width: 100%; margin: 9px 0 0; }
+  .module-setting { width: 100%; margin-right: 0; }
+  .observation-grid { flex-wrap: wrap; }
+  .observation-card { flex-basis: 45%; margin-bottom: 8px; }
+  .observation-card:nth-child(3) { padding-left: 0; }
+  .coach-foot-actions { flex-wrap: wrap; }
+  .goal-suggestion > button { margin-top: 10px; margin-left: 0; }
+  .report-table .history-row > span { font-size: 11px; }
+  .activity-grid-days .activity-cell { width: 10%; }
+}
+.motion-reduced *, .motion-reduced *::before, .motion-reduced *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

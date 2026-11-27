@@ -135,6 +135,24 @@ class EconomyTests(unittest.TestCase):
         # Python 2.7 rounds 1.5 -> 2 and 0.5 -> 1. Python 3 round() differs.
         self.assertEqual(calculate(personal, {'eventCreditsList': []})['credits_net'], 97)
 
+    def test_ranked_uses_same_complete_credit_pipeline_and_does_not_mix_currencies(self):
+        personal = dict(complete_personal(), gold=9000000, crystal=8000000,
+                        credits=1000, autoLoadCost=(2500, 7000000),
+                        autoEquipCost=(1000, 6000000, 5000000))
+        avatar = dict(complete_avatar(), eventGoldList=[('gold', 4000000)],
+                      eventCrystalList=[('bonds', 3000000)])
+        # Ranked keeps regular TotalMoneyDetailsBlock in the reference client.
+        self.assertEqual(calculate(personal, avatar, bonus_type=22)['credits_net'], -4672)
+        for field in ('originalCreditsToDraw', 'autoEquipCost'):
+            missing = dict(personal)
+            del missing[field]
+            self.assertIsNone(calculate(missing, avatar, bonus_type=22)['credits_net'])
+        self.assertIsNone(calculate(personal, {}, bonus_type=22)['credits_net'])
+        self.assertIsNone(calculate(personal, avatar, bonus_type=22,
+                                    single_vehicle=False)['credits_net'])
+        self.assertIsNone(calculate(dict(personal, rolloutsCount=2), avatar,
+                                    bonus_type=22)['credits_net'])
+
     def test_overflow_or_unsafe_rounding_returns_unknown(self):
         for fields in ({'originalCreditsToDraw': (1 << 53)},
                        {'originalCreditsToDraw': 1 << 52,

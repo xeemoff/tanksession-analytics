@@ -1,0 +1,77 @@
+{
+  "scope": "synthetic_account_scoped_companion_report",
+  "native_timing_includes": [
+    "input_encoding",
+    "process_start",
+    "native_parse_and_analytics",
+    "output_json_validation",
+    "label_attachment"
+  ],
+  "excluded_from_engine_timings": [
+    "journal_io",
+    "shared_validation_and_identity_preparation"
+  ],
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "python": "3.12.14",
+  "binary_sha256": "3e8ce5df99b9c05c6975d3b61981a2e5a33fc9842252b843955e4a6362af7d9e",
+  "results": [
+    {
+      "rows": 1000,
+      "groups": 32,
+      "repeats": 3,
+      "preparation_seconds": 0.020823916000153986,
+      "native_subprocess_and_protocol": {
+        "median_seconds": 0.006143889999748353,
+        "min_seconds": 0.005992783000237978
+      },
+      "python_exact_reference": {
+        "median_seconds": 0.009759830000348302,
+        "min_seconds": 0.009351005000098667
+      },
+      "reference_over_native_ratio": 1.5885424382187918
+    },
+    {
+      "rows": 10000,
+      "groups": 32,
+      "repeats": 3,
+      "preparation_seconds": 0.24080310899989854,
+      "native_subprocess_and_protocol": {
+        "median_seconds": 0.026106489000085276,
+        "min_seconds": 0.02342576800037932
+      },
+      "python_exact_reference": {
+        "median_seconds": 0.04840481700011878,
+        "min_seconds": 0.047120301999711955
+      },
+      "reference_over_native_ratio": 1.8541297146453002
+    },
+    {
+      "rows": 100000,
+      "groups": 32,
+      "repeats": 3,
+      "preparation_seconds": 2.343738483999914,
+      "native_subprocess_and_protocol": {
+        "median_seconds": 0.22293335499989553,
+        "min_seconds": 0.22145403500007887
+      },
+      "python_exact_reference": {
+        "median_seconds": 0.5582414360001167,
+        "min_seconds": 0.5573607080000329
+      },
+      "reference_over_native_ratio": 2.504073183666833
+    }
+  ],
+  "measured_at": "2026-11-27",
+  "compiler": "GCC 14.2.0",
+  "configuration": "Release",
+  "cmake": "3.31.6",
+  "native_core_only": {
+    "scope": "native_core_only",
+    "rows": 100000,
+    "groups": 32,
+    "repeats": 3,
+    "median_seconds": 0.041591398,
+    "min_seconds": 0.037584809
+  },
+  "limitations": "Local synthetic benchmark, not in-game FPS or a dashboard comparison. Later source changes require a new measurement."
+}

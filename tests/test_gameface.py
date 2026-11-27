@@ -203,6 +203,19 @@ class ControllerTests(unittest.TestCase):
         self.runtime.run(self.controller._request_timer)
         self.assertEqual(window.payloads[-1]['request_id'], 'ui-2')
 
+    def test_refresh_preserves_normalized_history_search_and_sort(self):
+        def snapshot(account, value):
+            self.calls.append((account, dict(value)))
+            return {'protocol': 1, 'source': 'game', 'request_id': value['request_id'],
+                    'selection': {'vehicle': value['vehicle'], 'window': value['window'],
+                                  'page': 0, 'history_query': u'карта', 'history_sort': 'damage_desc'}}
+        self.controller._snapshot_provider = snapshot
+        window = self.open()
+        self.controller.refresh()
+        self.runtime.run(self.controller._request_timer)
+        self.assertEqual(self.calls[-1][1]['history_query'], u'карта')
+        self.assertEqual(self.calls[-1][1]['history_sort'], 'damage_desc')
+
     def test_mutations_are_not_coalesced_or_replayed_by_refresh(self):
         window = self.open()
         window.on_request(request('view-1', window=30))

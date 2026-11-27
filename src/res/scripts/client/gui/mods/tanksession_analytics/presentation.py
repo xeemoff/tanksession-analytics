@@ -13,7 +13,7 @@ from .analytics import rolling_damage, sort_records, window_comparison
 from .coach import build_coach
 from .core import _as_text, by_day, by_vehicle, long_type, record_is_complete, summarize, validate_record
 from .goals import evaluate_goals, migrate_goal_selectors, validate_goals
-from .insights import build_metrics, build_sessions
+from .insights import build_metrics, build_sessions, build_analytics, build_reports
 from .recorder import _verified_account
 from .workspace import validate_command
 from .vehicles import resolve_records, selector_resolver, selector_for
@@ -34,11 +34,12 @@ MAX_INSIGHT_DAYS = 14
 MAX_INSIGHT_VEHICLES = 20
 _REQUEST_ID = re.compile(r'^[A-Za-z0-9_.:-]{1,64}\Z')
 _REQUEST_FIELDS = frozenset(('protocol', 'request_id', 'vehicle', 'window', 'page',
-                             'action', 'preferences', 'goal'))
+                             'action', 'preferences', 'goal', 'history_query', 'history_sort'))
+HISTORY_SORTS = ('time_desc', 'time_asc', 'damage_desc', 'xp_desc', 'credits_desc')
 PAGE_SIZE = 5
 DETAIL_FIELDS = ('map', 'kills', 'survived', 'shots', 'direct_hits', 'penetrations',
                  'xp_base', 'xp_bonus', 'credits_gross', 'credits_net', 'assistance_radio',
-                 'assistance_track')
+                 'assistance_track', 'map_label', 'vehicle_tier', 'vehicle_class', 'vehicle_nation')
 
 
 def _text(value, limit, name):
@@ -73,8 +74,18 @@ def validate_request(request):
             or window not in (10, 30, 100)):
         raise ValueError('Unsupported comparison window')
     vehicle = _text(request.get('vehicle', ''), 128, 'vehicle')
-    return validate_command(request, {'protocol': PROTOCOL_VERSION, 'request_id': identifier,
-                                     'vehicle': vehicle, 'window': window})
+    clean = validate_command(request, {'protocol': PROTOCOL_VERSION, 'request_id': identifier,
+                                      'vehicle': vehicle, 'window': window})
+    if 'history_query' in request or 'history_sort' in request:
+        query = _text(request.get('history_query', ''), 64, 'history_query').strip()
+        if any(ord(char) < 32 or ord(char) == 127 for char in query):
+            raise ValueError('Invalid history query')
+        order = request.get('history_sort', 'time_desc')
+        if not isinstance(order, _text_types) or order not in HISTORY_SORTS:
+            raise ValueError('Unsupported history sort')
+        clean.update(history_query=query, history_sort=order)
+        clean.setdefault('page', 0)
+    return clean
 
 
 def _confirmed_account(value):
@@ -113,7 +124,9 @@ def _empty_snapshot(request, source, now, status):
     return {
         'protocol': PROTOCOL_VERSION, 'source': source, 'status': status,
         'request_id': request['request_id'],
-        'selection': {'vehicle': request['vehicle'], 'window': request['window']},
+        'selection': {'vehicle': request['vehicle'], 'window': request['window'],
+                      'history_query': request.get('history_query', ''),
+                      'history_sort': request.get('history_sort', 'time_desc')},
         'vehicles': [], 'summary': summarize([]),
         'comparison': window_comparison([], request['window']),
         'coach': build_coach([], '' if status == 'account_unavailable' else request['vehicle'],
@@ -149,8 +162,9 @@ def clean_own_records(records, account):
             continue
         try:
             record['vehicle'].encode('utf-8')
-            if record.get('map') is not None:
-                record['map'].encode('utf-8')
+            for name in ('map', 'map_label'):
+                if record.get(name) is not None:
+                    record[name].encode('utf-8')
         except UnicodeError:
             invalid += 1
             continue
@@ -203,6 +217,7 @@ def _project_vehicle_records(records, labels):
     projected = []
     for row in records:
         item = dict(row)
+        item['_vehicle_original'] = row['vehicle']
         selector = selector_for(row)
         if selector in labels:
             item['vehicle_label'] = labels[selector]
@@ -228,14 +243,28 @@ def _history_row(row, fields):
 def _add_pagination(snapshot, selected, request):
     if 'page' not in request:
         return
-    total = len(selected)
+    query = request.get('history_query', '').lower()
+    outcomes = {'win': u'победа', 'loss': u'поражение', 'draw': u'ничья', 'unknown': u'неизвестно'}
+    if query:
+        selected = [row for row in selected if query in u' '.join(
+            [_as_text(row.get(name) or '') for name in
+             ('vehicle', '_vehicle_original', 'vehicle_label', 'map', 'map_label',
+              'vehicle_class', 'vehicle_nation', 'outcome')] +
+            [outcomes.get(row.get('outcome'), '')]).lower()]
+    order = request.get('history_sort', 'time_desc')
+    if order in ('time_desc', 'time_asc'):
+        ordered = list(reversed(selected)) if order == 'time_desc' else list(selected)
+    else:
+        field = {'damage_desc': 'damage', 'xp_desc': 'xp', 'credits_desc': 'credits_net'}[order]
+        ordered = sorted(selected, key=lambda row: (row.get(field) is None,
+                         -row[field] if row.get(field) is not None else 0, -row['timestamp']))
+    total = len(ordered)
     pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
     page = min(request['page'], pages - 1)
-    end = total - page * PAGE_SIZE
-    start = max(0, end - PAGE_SIZE)
+    start = page * PAGE_SIZE
     fields = ('timestamp', 'vehicle', 'outcome', 'damage', 'xp') + DETAIL_FIELDS
     snapshot['history'] = [_history_row(row, fields)
-                           for row in reversed(selected[start:end])]
+                           for row in ordered[start:start + PAGE_SIZE]]
     snapshot['pagination'] = {'page': page, 'page_size': PAGE_SIZE,
                               'pages': pages, 'total': total}
     snapshot['selection']['page'] = page
@@ -303,6 +332,8 @@ def build_snapshot(records, account_id, request=None, goals=None, diagnostics=No
             snapshot['insights'] = _build_insights([], None)
             snapshot['metrics'] = build_metrics([])
             snapshot['sessions'] = build_sessions([])
+            snapshot['analytics'] = build_analytics([], observed)
+            snapshot['reports'] = build_reports([], observed)
         _add_pagination(snapshot, [], request)
         return snapshot
     if pending_count is not None:
@@ -332,6 +363,16 @@ def build_snapshot(records, account_id, request=None, goals=None, diagnostics=No
     vehicles = [_labelled({'name': name, 'battles': stats['battles']},
                          name, labels, field='label')
                 for name, stats in _projected_vehicle_table(own)]
+    metadata = {}
+    for row in own:
+        fields = metadata.setdefault(row['vehicle'], {})
+        for field in ('vehicle_tier', 'vehicle_class', 'vehicle_nation'):
+            if row.get(field) is not None:
+                fields.setdefault(field, set()).add(row[field])
+    for vehicle in vehicles:
+        for field, values in metadata.get(vehicle['name'], {}).items():
+            if len(values) == 1:
+                vehicle[field] = next(iter(values))
     if len(vehicles) > MAX_VEHICLES:
         raise ValueError('Too many vehicles for a presentation snapshot')
     selected = [row for row in own
@@ -361,7 +402,7 @@ def build_snapshot(records, account_id, request=None, goals=None, diagnostics=No
                    for battle, average, known in rolling_damage(
                        trend_rows, request['window'], max_points=MAX_SERIES)],
         'goals': rendered_goals,
-        'history': [_history_row(row, ('timestamp', 'vehicle', 'outcome', 'damage', 'xp'))
+        'history': [_history_row(row, ('timestamp', 'vehicle', 'outcome', 'damage', 'xp') + DETAIL_FIELDS)
                     for row in reversed(selected[-MAX_HISTORY:])],
         'quality': {
             'total_records': len(selected),
@@ -374,5 +415,7 @@ def build_snapshot(records, account_id, request=None, goals=None, diagnostics=No
         snapshot['insights'] = _build_insights(selected, pending_count)
         snapshot['metrics'] = build_metrics(selected)
         snapshot['sessions'] = build_sessions(own, request['vehicle'])
+        snapshot['analytics'] = build_analytics(selected, observed)
+        snapshot['reports'] = build_reports(selected, observed)
     _add_pagination(snapshot, selected, request)
     return snapshot

@@ -1,8 +1,17 @@
 export type WindowSize = 10 | 30 | 100;
 export type Mode = 'gameface' | 'demo' | 'local';
-export type PanelSection = 'progress' | 'dynamics' | 'history' | 'summary' | 'settings';
-export interface Selection { vehicle: string; window: WindowSize; page?: number }
-export interface Preferences { vehicle: string; window: WindowSize; tab: PanelSection; density: 'normal' | 'compact'; contrast: 'standard' | 'high' }
+export type PanelSection = 'progress' | 'dynamics' | 'history' | 'summary' | 'analytics' | 'reports' | 'settings';
+export type HistorySort = 'time_desc' | 'time_asc' | 'damage_desc' | 'xp_desc' | 'credits_desc';
+export type DashboardModule = 'metrics' | 'coach' | 'vehicle' | 'chart' | 'goals' | 'activity' | 'economy' | 'reports';
+export type Theme = 'hangar' | 'slate' | 'light';
+export type VehicleClass = 'lightTank' | 'mediumTank' | 'heavyTank' | 'AT-SPG' | 'SPG';
+export interface VehicleMetadata { vehicle_tier?: number | null; vehicle_class?: VehicleClass | null; vehicle_nation?: string | null }
+export interface VehicleEntry extends VehicleMetadata { name: string; label?: string; battles: number }
+export interface Selection { vehicle: string; window: WindowSize; page?: number; history_query?: string; history_sort?: HistorySort }
+export interface Preferences {
+  vehicle: string; window: WindowSize; tab: PanelSection; density: 'normal' | 'compact'; contrast: 'standard' | 'high';
+  theme?: Theme; modules?: DashboardModule[]; motion?: 'system' | 'reduced';
+}
 export interface GoalDefinition { vehicle: string; vehicle_label?: string; window: number; target_avg_damage: number }
 export type UserCommand = { action: 'initialize' | 'export_csv' }
   | { action: 'save_preferences'; preferences: Preferences }
@@ -33,6 +42,20 @@ export interface Coach {
     best_window_avg: number | null; previous_best_window_avg: number | null; current_window_avg: number | null;
     new_window_record: boolean;
   };
+  consistency?: {
+    status: 'ready' | 'insufficient_data' | 'not_comparable'; samples: number; required: number;
+    median: number | null; lower_quartile: number | null; upper_quartile: number | null;
+    interquartile_range: number | null; median_absolute_deviation: number | null;
+  };
+  observations?: Array<{
+    kind: 'damage_average' | 'damage_median' | 'damage_spread' | 'net_credits';
+    current: number; previous: number | null; delta: number | null; samples: number; previous_samples: number;
+    window: number; scope: 'last_windows' | 'current_window';
+  }>;
+  goal_suggestions?: Array<{
+    vehicle: string; window: number; target_avg_damage: number; baseline_avg_damage: number; samples: number;
+    adjustment_percent: 5; rounding_step: 50; basis: 'recent_window'; requires_confirmation: true;
+  }>;
 }
 export type ObservedOutcome = 'win' | 'loss' | 'draw' | 'unknown';
 export interface BattlePoint { battle: number; damage: number | null; outcome: ObservedOutcome }
@@ -48,9 +71,9 @@ export interface Insights {
   assistance_radio: AssistanceMetric;
   assistance_track: AssistanceMetric;
 }
-export interface HistoryBattle {
+export interface HistoryBattle extends VehicleMetadata {
   timestamp: number; vehicle: string; vehicle_label?: string; outcome: string | null; damage: number | null; xp: number | null;
-  map?: string | null; kills?: number | null; survived?: boolean | null;
+  map?: string | null; map_label?: string | null; kills?: number | null; survived?: boolean | null;
   shots?: number | null; direct_hits?: number | null; penetrations?: number | null;
   xp_base?: number | null; xp_bonus?: number | null; credits_gross?: number | null; credits_net?: number | null;
   assistance_radio?: number | null; assistance_track?: number | null;
@@ -79,10 +102,29 @@ export interface Sessions {
     delta_average: number | null; delta_median: number | null;
   };
 }
+export interface TotalMetric extends AssistanceMetric { total: number | null }
+export interface AnalysisGroup { key: string; label: string; vehicle_label?: string; summary: Summary; credits_net: TotalMetric }
+export interface Analytics {
+  version: 1; basis: 'received_at'; timezone: 'UTC';
+  dimensions: Record<'maps' | 'tiers' | 'classes' | 'nations', AnalysisGroup[]>;
+  activity: Record<'days' | 'weekdays' | 'hours', AnalysisGroup[]>;
+  economy: Record<'credits_gross' | 'credits_net' | 'xp_bonus', TotalMetric> & { vehicles: AnalysisGroup[] };
+  coverage: Record<'map_label' | 'vehicle_tier' | 'vehicle_class' | 'vehicle_nation', number>;
+}
+export interface PeriodReport {
+  key: 'week' | 'month' | 'all_time'; label: string; start_at: number | null; end_at: number;
+  summary: Summary; credits_net: TotalMetric; xp_bonus: TotalMetric; vehicles: AnalysisGroup[];
+  previous: { start_at: number; end_at: number; summary: Summary; credits_net: TotalMetric } | null;
+  comparison: {
+    status: 'ready' | 'insufficient_data' | 'partial_data' | 'not_applicable';
+    avg_damage_delta: number | null; win_rate_delta_pp: number | null; credits_net_average_delta: number | null;
+  };
+}
+export interface Reports { version: 1; basis: 'received_at'; timezone: 'UTC'; excluded_future: number; periods: PeriodReport[] }
 export interface Snapshot {
   protocol: 1; source: 'game' | 'demo'; status: 'ready' | 'empty' | 'account_unavailable';
   request_id: string; selection: Selection;
-  vehicles: Array<{ name: string; label?: string; battles: number }>;
+  vehicles: VehicleEntry[];
   summary: Summary;
   comparison: {
     window: WindowSize; current: Summary; previous: Summary | null;
@@ -99,6 +141,8 @@ export interface Snapshot {
   workspace?: Workspace;
   metrics?: ExtendedMetrics;
   sessions?: Sessions;
+  analytics?: Analytics;
+  reports?: Reports;
   updated_at: number;
 }
 
@@ -121,7 +165,18 @@ function summary(value: unknown): value is Summary {
 }
 function selection(value: unknown): value is Selection {
   return record(value) && text(value.vehicle) && [10, 30, 100].indexOf(value.window as number) !== -1
-    && (!('page' in value) || count(value.page));
+    && (!('page' in value) || count(value.page))
+    && (!('history_query' in value) || text(value.history_query, 64))
+    && (!('history_sort' in value) || ['time_desc', 'time_asc', 'damage_desc', 'xp_desc', 'credits_desc'].includes(value.history_sort as string));
+}
+
+const vehicleClasses = ['lightTank', 'mediumTank', 'heavyTank', 'AT-SPG', 'SPG'];
+const vehicleNations = ['ussr', 'germany', 'usa', 'china', 'france', 'uk', 'japan', 'czech', 'sweden', 'poland', 'italy', 'intunion'];
+export const dashboardModules: DashboardModule[] = ['metrics', 'coach', 'vehicle', 'chart', 'goals', 'activity', 'economy', 'reports'];
+function vehicleMetadata(value: Record<string, unknown>): boolean {
+  return (!('vehicle_tier' in value) || value.vehicle_tier === null || (count(value.vehicle_tier) && value.vehicle_tier >= 1 && value.vehicle_tier <= 11))
+    && (!('vehicle_class' in value) || value.vehicle_class === null || vehicleClasses.includes(value.vehicle_class as string))
+    && (!('vehicle_nation' in value) || value.vehicle_nation === null || vehicleNations.includes(value.vehicle_nation as string));
 }
 
 function coach(value: unknown, window: WindowSize): value is Coach {
@@ -129,6 +184,7 @@ function coach(value: unknown, window: WindowSize): value is Coach {
       || !text(value.vehicle) || ('vehicle_label' in value && !text(value.vehicle_label)) || value.window !== window || !count(value.battles)
       || value.required_battles !== window * 2 || !count(value.remaining_battles)
       || value.remaining_battles !== Math.max(0, window * 2 - value.battles)) return false;
+  if (!coachExtensions(value, window)) return false;
   const coverage = value.coverage;
   if (!record(coverage) || !['current_battles', 'current_damage', 'previous_battles', 'previous_damage'].every(key => count(coverage[key]))) return false;
   if ((coverage.current_battles as number) > window || (coverage.previous_battles as number) > window
@@ -176,6 +232,46 @@ function coach(value: unknown, window: WindowSize): value is Coach {
   if (value.status === 'ready' && r.current_window_avg !== (comparison as Record<string, unknown>).current_avg) return false;
   if (value.battles === 0 && (records.new_damage_record || records.new_window_record
       || ['best_damage', 'latest_damage', 'previous_best_damage', 'best_window_avg', 'previous_best_window_avg', 'current_window_avg'].some(key => records[key] !== null))) return false;
+  return true;
+}
+
+function coachExtensions(value: Record<string, unknown>, window: number): boolean {
+  const blocked = ['choose_vehicle', 'empty', 'incomplete', 'mixed_modes', 'identity_ambiguous'].includes(value.status as string);
+  if ('consistency' in value) {
+    const c = value.consistency;
+    const fields = ['median', 'lower_quartile', 'upper_quartile', 'interquartile_range', 'median_absolute_deviation'];
+    if (!record(c) || !['ready', 'insufficient_data', 'not_comparable'].includes(c.status as string)
+        || !count(c.samples) || c.samples > window || c.required !== window || !fields.every(key => metric(c[key]))) return false;
+    if (c.status === 'ready') {
+      if (blocked || c.samples !== window || !fields.every(key => number(c[key]))
+          || (c.lower_quartile as number) > (c.median as number) || (c.median as number) > (c.upper_quartile as number)
+          || Math.abs((c.upper_quartile as number) - (c.lower_quartile as number) - (c.interquartile_range as number)) > 0.11) return false;
+    } else if (!fields.every(key => c[key] === null)) return false;
+  }
+  if ('observations' in value) {
+    if (!array(value.observations, 4) || (blocked && value.observations.length > 0)) return false;
+    const kinds = new Set<string>();
+    for (const item of value.observations) {
+      if (!record(item) || !['damage_average', 'damage_median', 'damage_spread', 'net_credits'].includes(item.kind as string)
+          || kinds.has(item.kind as string) || !number(item.current) || !nullableNumber(item.previous) || !nullableNumber(item.delta)
+          || !count(item.samples) || item.samples > window || !count(item.previous_samples) || item.previous_samples > window
+          || item.window !== window || !['last_windows', 'current_window'].includes(item.scope as string)) return false;
+      if (item.kind !== 'net_credits' && (item.current < 0 || (typeof item.previous === 'number' && item.previous < 0))) return false;
+      if (item.scope === 'current_window' ? item.previous !== null || item.delta !== null
+        : !number(item.previous) || !number(item.delta) || Math.abs(item.current - item.previous - item.delta) > 0.11) return false;
+      kinds.add(item.kind as string);
+    }
+  }
+  if ('goal_suggestions' in value) {
+    if (!array(value.goal_suggestions, 1) || (blocked && value.goal_suggestions.length > 0)) return false;
+    for (const item of value.goal_suggestions) {
+      if (!record(item) || !text(item.vehicle) || !item.vehicle || item.vehicle !== value.vehicle || item.window !== window
+          || !count(item.target_avg_damage) || item.target_avg_damage < 1 || item.target_avg_damage > 50000
+          || !number(item.baseline_avg_damage) || item.baseline_avg_damage < 0 || item.samples !== window
+          || item.adjustment_percent !== 5 || item.rounding_step !== 50 || item.basis !== 'recent_window'
+          || item.requires_confirmation !== true) return false;
+    }
+  }
   return true;
 }
 
@@ -247,8 +343,12 @@ function validInsights(value: unknown, totals: Summary, status: Snapshot['status
 function validWorkspace(value: unknown): value is Workspace {
   if (!record(value) || value.version !== 1 || typeof value.can_edit !== 'boolean' || !record(value.preferences)) return false;
   const p = value.preferences;
-  if (!selection(p) || !['progress', 'dynamics', 'history', 'summary', 'settings'].includes(p.tab as string)
+  if (!selection(p) || !['progress', 'dynamics', 'history', 'summary', 'analytics', 'reports', 'settings'].includes(p.tab as string)
       || !['normal', 'compact'].includes(p.density as string) || !['standard', 'high'].includes(p.contrast as string)) return false;
+  if (('theme' in p && !['hangar', 'slate', 'light'].includes(p.theme as string))
+      || ('motion' in p && !['system', 'reduced'].includes(p.motion as string))
+      || ('modules' in p && (!array(p.modules, dashboardModules.length) || p.modules.length === 0
+        || new Set(p.modules).size !== p.modules.length || !p.modules.every(key => dashboardModules.includes(key as DashboardModule))))) return false;
   if (!array(value.goals, 30) || !value.goals.every(g => record(g) && text(g.vehicle) && !!g.vehicle
       && (!('vehicle_label' in g) || text(g.vehicle_label))
       && count(g.window) && g.window >= 10 && g.window <= 1000 && count(g.target_avg_damage)
@@ -308,6 +408,83 @@ function validSessions(value: unknown, total: number): value is Sessions {
     && [...averages, 'delta_average', 'delta_median'].every(key => number(c[key])));
 }
 
+function totalMetric(value: unknown, battles: number, signed = false): value is TotalMetric {
+  if (!record(value) || !count(value.samples) || value.samples > battles
+      || !(signed ? nullableNumber(value.average) : metric(value.average))
+      || !(value.total === null || (number(value.total) && Number.isSafeInteger(value.total) && (signed || value.total >= 0)))
+      || (value.samples === 0) !== (value.average === null) || (value.samples === 0) !== (value.total === null)) return false;
+  return value.samples === 0 || Math.abs((value.total as number) / value.samples - (value.average as number)) <= 0.051;
+}
+
+function analysisGroups(value: unknown, max: number, battles: number): value is AnalysisGroup[] {
+  if (!array(value, max)) return false;
+  const keys = new Set<string>();
+  let total = 0;
+  for (const item of value) {
+    if (!record(item) || !text(item.key) || !item.key || keys.has(item.key) || !text(item.label) || !item.label
+        || ('vehicle_label' in item && !text(item.vehicle_label)) || !summary(item.summary)
+        || item.summary.wins + item.summary.losses + item.summary.draws !== item.summary.known_outcomes
+        || !totalMetric(item.credits_net, item.summary.battles, true)) return false;
+    keys.add(item.key); total += item.summary.battles;
+  }
+  return total <= battles;
+}
+
+function validAnalytics(value: unknown, battles: number): value is Analytics {
+  if (!record(value) || value.version !== 1 || value.basis !== 'received_at' || value.timezone !== 'UTC'
+      || !record(value.dimensions) || !record(value.activity) || !record(value.economy) || !record(value.coverage)) return false;
+  const limits: Record<string, number> = { maps: 24, tiers: 12, classes: 6, nations: 13 };
+  for (const key of Object.keys(limits)) if (!analysisGroups(value.dimensions[key], limits[key], battles)) return false;
+  if (!analysisGroups(value.activity.days, 90, battles) || !analysisGroups(value.activity.weekdays, 7, battles)
+      || !analysisGroups(value.activity.hours, 24, battles)) return false;
+  if (!totalMetric(value.economy.credits_gross, battles) || !totalMetric(value.economy.credits_net, battles, true)
+      || !totalMetric(value.economy.xp_bonus, battles) || !analysisGroups(value.economy.vehicles, 64, battles)) return false;
+  return ['map_label', 'vehicle_tier', 'vehicle_class', 'vehicle_nation']
+    .every(key => count(value.coverage && (value.coverage as Record<string, unknown>)[key])
+      && ((value.coverage as Record<string, number>)[key] <= battles));
+}
+
+function validReports(value: unknown, battles: number): value is Reports {
+  if (!record(value) || value.version !== 1 || value.basis !== 'received_at' || value.timezone !== 'UTC'
+      || !count(value.excluded_future) || value.excluded_future > battles || !array(value.periods, 3) || value.periods.length !== 3) return false;
+  const keys = new Set<string>();
+  for (const item of value.periods) {
+    if (!record(item) || !['week', 'month', 'all_time'].includes(item.key as string) || keys.has(item.key as string)
+        || !text(item.label) || !count(item.end_at) || item.end_at > 253402300800
+        || !(item.start_at === null || (count(item.start_at) && item.start_at < item.end_at))
+        || !summary(item.summary) || item.summary.battles > battles
+        || !totalMetric(item.credits_net, item.summary.battles, true) || !totalMetric(item.xp_bonus, item.summary.battles)
+        || !analysisGroups(item.vehicles, 10, item.summary.battles) || !record(item.comparison)) return false;
+    keys.add(item.key as string);
+    const c = item.comparison;
+    const deltas = ['avg_damage_delta', 'win_rate_delta_pp', 'credits_net_average_delta'];
+    if (!['ready', 'insufficient_data', 'partial_data', 'not_applicable'].includes(c.status as string)
+        || !deltas.every(key => nullableNumber(c[key]))) return false;
+    if (item.key === 'all_time') {
+      if (item.previous !== null || c.status !== 'not_applicable'
+          || !deltas.every(key => c[key] === null) || item.summary.battles + value.excluded_future !== battles) return false;
+    } else {
+      const p = item.previous;
+      if (item.start_at === null || !record(p) || !count(p.start_at) || !count(p.end_at)
+          || p.start_at > p.end_at || p.end_at !== item.start_at || !summary(p.summary)
+          || p.summary.battles + item.summary.battles > battles || !totalMetric(p.credits_net, p.summary.battles, true)
+          || c.status === 'not_applicable') return false;
+      if (c.avg_damage_delta !== null && (item.summary.damage_samples !== item.summary.battles
+          || p.summary.damage_samples !== p.summary.battles || item.summary.avg_damage === null || p.summary.avg_damage === null
+          || Math.abs(item.summary.avg_damage - p.summary.avg_damage - (c.avg_damage_delta as number)) > 0.11)) return false;
+      if (c.win_rate_delta_pp !== null && (item.summary.known_outcomes !== item.summary.battles
+          || p.summary.known_outcomes !== p.summary.battles || item.summary.win_rate === null || p.summary.win_rate === null
+          || Math.abs(item.summary.win_rate - p.summary.win_rate - (c.win_rate_delta_pp as number)) > 0.11)) return false;
+      if (c.credits_net_average_delta !== null && (item.credits_net.samples !== item.summary.battles
+          || p.credits_net.samples !== p.summary.battles || item.credits_net.average === null || p.credits_net.average === null
+          || Math.abs(item.credits_net.average - p.credits_net.average - (c.credits_net_average_delta as number)) > 0.11)) return false;
+      if ((item.summary.battles === 0 || p.summary.battles === 0)
+          && (c.status !== 'insufficient_data' || !deltas.every(key => c[key] === null))) return false;
+    }
+  }
+  return true;
+}
+
 export function decodePayload(raw: unknown): unknown {
   if (typeof raw === 'string') {
     if (raw.length > 512 * 1024) throw new Error('Ответ превышает допустимый размер.');
@@ -325,7 +502,7 @@ export function parseSnapshot(raw: unknown): Snapshot {
       || !text(raw.request_id, 64) || !selection(raw.selection) || !summary(raw.summary)
       || !count(raw.updated_at) || raw.updated_at > 253402300799) return fail();
   if (!array(raw.vehicles, 2048) || !raw.vehicles.every(v => record(v) && text(v.name)
-      && (!('label' in v) || text(v.label)) && count(v.battles))) return fail();
+      && (!('label' in v) || text(v.label)) && count(v.battles) && vehicleMetadata(v))) return fail();
   const comparison = raw.comparison;
   if (!record(comparison) || ![10, 30, 100].includes(comparison.window as number)
       || !summary(comparison.current) || !(comparison.previous === null || summary(comparison.previous))
@@ -342,7 +519,8 @@ export function parseSnapshot(raw: unknown): Snapshot {
       && ['kills', 'shots', 'direct_hits', 'penetrations', 'xp_base', 'xp_bonus', 'credits_gross', 'assistance_radio', 'assistance_track'].every(key => !(key in v) || v[key] === null || count(v[key]))
       && (!('credits_net' in v) || v.credits_net === null || (number(v.credits_net) && Number.isSafeInteger(v.credits_net)))
       && (!('survived' in v) || v.survived === null || typeof v.survived === 'boolean')
-      && (!('map' in v) || v.map === null || text(v.map)))) return fail();
+      && (!('map' in v) || v.map === null || text(v.map)) && (!('map_label' in v) || v.map_label === null || text(v.map_label))
+      && vehicleMetadata(v))) return fail();
   if (!record(raw.quality) || !['total_records', 'incomplete_records', 'invalid_records', 'conflicts'].every(key => count((raw.quality as Record<string, unknown>)[key]))) return fail();
   // Optional additive protocol-1 extension; older hosts remain readable.
   if ('coach' in raw && (!coach(raw.coach, raw.selection.window)
@@ -352,12 +530,15 @@ export function parseSnapshot(raw: unknown): Snapshot {
   if ('pagination' in raw) {
     const p = raw.pagination;
     if (!record(p) || !count(p.page) || p.page_size !== 5 || !count(p.pages) || !count(p.total)
-        || p.total !== raw.summary.battles || p.pages !== Math.max(1, Math.ceil(p.total / 5))
+        || (raw.selection.history_query ? p.total > raw.summary.battles : p.total !== raw.summary.battles)
+        || p.pages !== Math.max(1, Math.ceil(p.total / 5))
         || p.page >= p.pages || raw.history.length !== Math.min(5, Math.max(0, p.total - p.page * 5))) return fail();
   }
   if ('workspace' in raw && !validWorkspace(raw.workspace)) return fail();
   if ('metrics' in raw && !validMetrics(raw.metrics, raw.summary.battles)) return fail();
   if ('sessions' in raw && !validSessions(raw.sessions, raw.summary.battles)) return fail();
+  if ('analytics' in raw && !validAnalytics(raw.analytics, raw.summary.battles)) return fail();
+  if ('reports' in raw && !validReports(raw.reports, raw.summary.battles)) return fail();
   return raw as unknown as Snapshot;
 }
 

@@ -2,12 +2,24 @@
   "coach": {
     "battles": 0,
     "comparison": null,
+    "consistency": {
+      "interquartile_range": null,
+      "lower_quartile": null,
+      "median": null,
+      "median_absolute_deviation": null,
+      "required": 10,
+      "samples": 0,
+      "status": "insufficient_data",
+      "upper_quartile": null
+    },
     "coverage": {
       "current_battles": 0,
       "current_damage": 0,
       "previous_battles": 0,
       "previous_damage": 0
     },
+    "goal_suggestions": [],
+    "observations": [],
     "records": {
       "best_damage": null,
       "best_window_avg": null,
@@ -74,6 +86,8 @@
   },
   "request_id": "fixture",
   "selection": {
+    "history_query": "",
+    "history_sort": "time_desc",
     "vehicle": "",
     "window": 10
   },

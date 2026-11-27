@@ -4,7 +4,8 @@ import json
 import os
 
 from .core import _arena_id, _as_text, _non_negative_int, validate_record, record_is_complete
-from .vehicles import normalize_vehicle_id, revision_identity
+from .vehicles import (normalize_vehicle_id, revision_identity,
+                       normalize_vehicle_metadata, VEHICLE_METADATA_FIELDS)
 
 _MAX_LINE_BYTES = 262144
 
@@ -222,7 +223,8 @@ class BattleStore(object):
         for name in ('vehicle', 'mode', 'outcome', 'damage', 'xp',
                      'assistance_radio', 'assistance_track', 'map', 'kills',
                      'survived', 'shots', 'direct_hits', 'penetrations',
-                     'xp_base', 'xp_bonus', 'credits_gross', 'credits_net'):
+                     'xp_base', 'xp_bonus', 'credits_gross', 'credits_net',
+                     'map_label', 'vehicle_tier', 'vehicle_class', 'vehicle_nation'):
             old, new = previous.get(name), incoming.get(name)
             old_missing = old is None or old == 'unknown'
             new_missing = new is None or new == 'unknown'
@@ -292,6 +294,10 @@ class PendingJournal(object):
         vehicle_id = normalize_vehicle_id(context.get('vehicle_id'))
         if vehicle_id is not None:
             safe['vehicle_id'] = vehicle_id
+            metadata = normalize_vehicle_metadata(context, vehicle_id)
+            for name in VEHICLE_METADATA_FIELDS:
+                if metadata[name] is not None:
+                    safe[name] = metadata[name]
         item = {'event': 'start', 'arena_id': arena, 'timestamp': int(timestamp),
                 'context': safe}
         _durable_append(self.path, item)

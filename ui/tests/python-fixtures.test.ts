@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { parseSnapshot } from '../src/contracts';
 
 test('Python-generated snapshots satisfy the frontend protocol', () => {
-  for (const name of ['demo', 'empty', 'incomplete', 'account_unavailable', 'release', 'identity_ready', 'identity_ambiguous',
+  for (const name of ['demo', 'empty', 'incomplete', 'account_unavailable', 'release', 'identity_ready', 'identity_ambiguous', 'analytics_v2', 'coach_v2',
     'coach_ready', 'coach_collecting', 'coach_incomplete', 'coach_record', 'coach_mixed_modes']) {
     const raw = readFileSync('../sample_data/ui/' + name + '.json', 'utf8');
     const snapshot = parseSnapshot(raw);

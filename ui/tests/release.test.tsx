@@ -118,8 +118,10 @@ test('HTTP writes use the command endpoint, JSON and an explicit same-origin req
   globalThis.XMLHttpRequest = FakeXHR as unknown as typeof XMLHttpRequest;
   try {
     const bridge = new HttpBridge('game'); const dispose = bridge.start(() => {}, error => { throw error; }, () => {});
-    bridge.request({ protocol: 1, request_id: 'read', vehicle: 'IS-7', window: 10, page: 3 });
+    bridge.request({ protocol: 1, request_id: 'read', vehicle: 'IS-7', window: 10, page: 3, history_query: 'Т-34 & <Лес>', history_sort: 'credits_desc' });
     assert.equal(calls[0].method, 'GET'); assert.match(calls[0].url, /page=3/); assert.equal(calls[0].body, null);
+    const query = new URL(calls[0].url, 'http://localhost').searchParams;
+    assert.equal(query.get('history_query'), 'Т-34 & <Лес>'); assert.equal(query.get('history_sort'), 'credits_desc');
     bridge.request({ protocol: 1, request_id: 'write', vehicle: 'IS-7', window: 10, action: 'export_csv' });
     assert.equal(calls[1].method, 'POST'); assert.equal(calls[1].url, '/api/command');
     assert.equal(calls[1].headers['X-TankSession-Request'], '1');

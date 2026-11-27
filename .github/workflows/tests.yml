@@ -88,6 +88,66 @@ jobs:
           path: ui/test-results/
           retention-days: 7
 
+  native-core:
+    name: C++23 / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: Linux
+            target: linux-x64
+            suffix: ''
+          - os: windows-2022
+            platform: Windows
+            target: windows-x64
+            suffix: '.exe'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Configure C++23 with pinned GoogleTest
+        run: cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release
+      - name: Build standalone native engine
+        run: cmake --build native/build --config Release --parallel 2
+      - name: Core and bounded protocol tests
+        run: ctest --test-dir native/build -C Release --output-on-failure
+      - name: Verify Python parity and actual subprocess adapter
+        env:
+          TANKSESSION_NATIVE_BINARY: ${{ github.workspace }}/native/build/bin/tanksession-native${{ matrix.suffix }}
+        run: python -m unittest discover -s tests -p "test_native_*.py" -v
+      - name: Measure core and complete adapter separately
+        run: |
+          native/build/bin/ts_native_benchmark${{ matrix.suffix }} 100000
+          python tools/benchmark_native.py --binary native/build/bin/tanksession-native${{ matrix.suffix }} --sizes 1000 10000 100000 --repeats 3 --json
+      - name: Package offline native companion
+        run: python tools/package_native.py --binary native/build/bin/tanksession-native${{ matrix.suffix }} --platform ${{ matrix.target }}
+      - name: Upload native companion with checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: tanksession-native-${{ matrix.platform }}-${{ github.sha }}
+          path: |
+            dist/*_Native_*.zip
+            dist/*_Native_*.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  native-sanitizers:
+    name: C++23 / address and undefined-behaviour checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure instrumented native core
+        run: cmake -S native -B native/build-sanitized -DCMAKE_BUILD_TYPE=Debug -DTSA_ENABLE_SANITIZERS=ON -DTSA_BUILD_BENCHMARK=OFF
+      - name: Build and exercise instrumented code
+        run: |
+          cmake --build native/build-sanitized --parallel 2
+          ctest --test-dir native/build-sanitized --output-on-failure
+
   python2-build:
     name: CPython 2.7 / reproducible mtmod (game unverified)
     runs-on: ubuntu-24.04
@@ -146,6 +206,8 @@ jobs:
           "$PYTHON2" -m unittest discover -s tests -p test_vehicle_identity.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_identity_integration.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_optional_metrics.py -v
+          "$PYTHON2" -m unittest discover -s tests -p test_metadata.py -v
+          "$PYTHON2" -m unittest discover -s tests -p test_analytics_v2.py -v
           "$PYTHON2" -m unittest discover -s tests -p test_recovery_limits.py -v
       - name: Build candidate and inspect structure
         shell: bash

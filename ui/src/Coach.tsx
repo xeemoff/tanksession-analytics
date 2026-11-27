@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Coach } from './contracts';
+import { Coach, GoalDefinition } from './contracts';
+import { CoachEvidence } from './CoachEvidence';
 import { vehicleLabel } from './vehicleLabel';
 
 function number(value: number | null, digits = 0): string {
@@ -33,10 +34,12 @@ function Records({ coach }: { coach: Coach }) {
   </div>;
 }
 
-export function CoachCard({ coach, latestVehicle, latestVehicleLabel, onSelectVehicle }: {
+export function CoachCard({ coach, latestVehicle, latestVehicleLabel, onSelectVehicle, onSaveGoal, busy = false }: {
   coach: Coach; latestVehicle?: string; latestVehicleLabel?: string; onSelectVehicle?: (vehicle: string) => void;
+  onSaveGoal?: (goal: GoalDefinition) => void; busy?: boolean;
 }) {
   const [explain, setExplain] = useState(false);
+  const [evidence, setEvidence] = useState(false);
   const comparison = coach.comparison;
   const choose = coach.status === 'choose_vehicle';
   const ambiguous = coach.status === 'identity_ambiguous';
@@ -52,7 +55,7 @@ export function CoachCard({ coach, latestVehicle, latestVehicleLabel, onSelectVe
       <div className="coach-wait" role="status"><strong>Название связано с разной техникой.</strong>
         <p>Для сравнения выберите машину с подтверждённым идентификатором. Старая история сохранена.</p></div>
     </> : <>
-      {!explain && <><div className="coach-scope"><strong>{coach.vehicle ? vehicleLabel(coach.vehicle, coach.vehicle_label) : 'Машина ещё не выбрана'}</strong><span>{coach.battles + ' сохранённых боёв'}</span></div>
+      {!explain && !evidence && <><div className="coach-scope"><strong>{coach.vehicle ? vehicleLabel(coach.vehicle, coach.vehicle_label) : 'Машина ещё не выбрана'}</strong><span>{coach.battles + ' сохранённых боёв'}</span></div>
       {comparison ? <>
         <div className="coach-verdict">
           <strong className={positive ? 'positive' : negative ? 'negative' : ''}>{positive ? 'Средний урон в этой выборке выше' : negative ? 'Средний урон в этой выборке ниже' : 'Средний урон почти не изменился'}</strong>
@@ -72,7 +75,10 @@ export function CoachCard({ coach, latestVehicle, latestVehicleLabel, onSelectVe
         <div className="coach-coverage"><span>{'Последний период: ' + coach.coverage.current_battles + '/' + coach.window + ' · урон известен в ' + coach.coverage.current_damage}</span><span>{'Предыдущий: ' + coach.coverage.previous_battles + '/' + coach.window + ' · урон известен в ' + coach.coverage.previous_damage}</span></div>
       </div>}
       <Records coach={coach} /></>}
-      <div className="coach-foot"><p>По сохранённым боям на этой машине. Карты и условия боёв могут различаться.</p><button type="button" className="coach-explain-button" aria-expanded={explain} aria-controls="coach-explanation" onClick={() => setExplain(!explain)}>{explain ? 'Скрыть пояснение' : 'Как рассчитано'}</button></div>
+      {evidence && <CoachEvidence coach={coach} onSaveGoal={onSaveGoal} busy={busy} />}
+      <div className="coach-foot"><p>По сохранённым боям на этой машине. Карты и условия боёв могут различаться.</p><div className="coach-foot-actions">
+        {coach.consistency && <button type="button" className="coach-explain-button" aria-expanded={evidence} onClick={() => { setEvidence(!evidence); setExplain(false); }}>{evidence ? 'К сравнению' : 'Наблюдения и цель'}</button>}
+        <button type="button" className="coach-explain-button" aria-expanded={explain} aria-controls="coach-explanation" onClick={() => { setExplain(!explain); setEvidence(false); }}>{explain ? 'Скрыть пояснение' : 'Как рассчитано'}</button></div></div>
       {explain && <div id="coach-explanation" className="coach-explanation">
         <p>{'Сравнение: два последовательных периода по ' + coach.window + ' боёв. Нужен известный урон во всех ' + coach.required_battles + ' результатах; пропуски не считаются нулём.'}</p>
         <p>При разных известных типах боёв сравнение скрывается. Неизвестный тип не гарантирует одинаковые условия.</p>
