@@ -4,7 +4,7 @@
 
 ## Обновить установленный мод
 
-1. Закрой игру. После успешного [CI-запуска](https://github.com/xeemoff/tanksession-analytics/actions/workflows/tests.yml) нужного коммита скачай `TankSession_Analytics_2.0.0-rc1_Windows.zip` из его артефакта либо из [опубликованного предварительного выпуска](https://github.com/xeemoff/tanksession-analytics/releases) этой версии и распакуй весь архив.
+1. Закрой игру. Скачай [Windows-архив 2.0.0-rc1](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc1/TankSession_Analytics_2.0.0-rc1_Windows.zip) со [страницы выпуска](https://github.com/xeemoff/tanksession-analytics/releases/tag/v2.0.0-rc1) и распакуй весь архив.
 2. Запусти **manager.cmd**, найди или выбери папку игры, проверь точную версию клиента и нажми «Установить / обновить». Например: `C:/Games/Tanki` и `1.46.0.0`. Установщик проверит файл, сохранит прежний пакет и выполнит замену.
 
 **Не удаляй `mods/configs/tanksession_analytics/`: это история и настройки.** Python и Node.js для готового установочного архива не нужны. Старые настройки сохранятся. При ручной установке оставь одну версию TankSession в `mods/<версия клиента>/`. [Полная инструкция, проверка без установки и откат](docs/INSTALL_RU.md).
@@ -26,7 +26,7 @@
 
 ## Посмотреть в браузере без установки в игру
 
-В артефакте `tanksession-hangar-preview-...` распакуй вложенный `TankSession_Analytics_2.0.0-rc1_Preview.zip`. Нужны Python 3.9+ и браузер. Запусти **demo_hangar.cmd** или:
+Скачай и распакуй [Preview-архив 2.0.0-rc1](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc1/TankSession_Analytics_2.0.0-rc1_Preview.zip). Нужны Python 3.9+ и браузер. Запусти **demo_hangar.cmd** или:
 
 ```powershell
 python tools/preview_ui.py --demo

@@ -57,16 +57,16 @@ TankSession Analytics собирает собственные послебоев
 
 ## Скачать и установить
 
-Файлы **2.0.0-rc1** доступны после успешной сборки соответствующего коммита в [Actions](https://github.com/xeemoff/tanksession-analytics/actions/workflows/tests.yml); опубликованные кандидаты находятся в [предварительных выпусках](https://github.com/xeemoff/tanksession-analytics/releases). Проверяй версию и результат именно выбранного запуска. Текущий статус разработки и испытаний — в [отчёте готовности](docs/READINESS_2_0_0_RU.md).
+**[Скачать 2.0.0-rc1](https://github.com/xeemoff/tanksession-analytics/releases/tag/v2.0.0-rc1)** — страница кандидата с готовыми архивами и контрольными суммами. Текущий статус автоматических проверок и испытаний в игре — в [отчёте готовности](docs/READINESS_2_0_0_RU.md).
 
 | Файл | Назначение |
 |---|---|
-| `TankSession_Analytics_2.0.0-rc1_Windows.zip` | `.mtmod`, SHA-256, manifest, установщик, инструкция и примечания. Для установки не нужны Python и Node.js |
+| [Windows.zip](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc1/TankSession_Analytics_2.0.0-rc1_Windows.zip) | `.mtmod`, SHA-256, manifest, графический менеджер, инструкция и примечания. Для установки не нужны Python и Node.js |
 | `ru.tanksession.analytics_2.0.0-rc1.mtmod` и `.sha256` | Пакет и контрольная сумма для ручной установки |
-| `TankSession_Analytics_2.0.0-rc1_Preview.zip` | Браузерный просмотр с готовыми ресурсами. Нужны Python 3.9+ и браузер; Node.js не требуется |
-| `TankSession_Analytics_2.0.0-rc1_Native_Windows_x64.zip` / `..._Native_Linux_x64.zip` | Отдельный C++-движок и Python 3-адаптер для отчётов; в игру не устанавливается |
+| [Preview.zip](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc1/TankSession_Analytics_2.0.0-rc1_Preview.zip) | Браузерный просмотр с готовыми ресурсами. Нужны Python 3.9+ и браузер; Node.js не требуется |
+| [Native Windows x64](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc1/TankSession_Analytics_2.0.0-rc1_Native_Windows_x64.zip) / [Linux x64](https://github.com/xeemoff/tanksession-analytics/releases/download/v2.0.0-rc1/TankSession_Analytics_2.0.0-rc1_Native_Linux_x64.zip) | Отдельный C++-движок и Python 3-адаптер для отчётов; в игру не устанавливается |
 
-Артефакты Actions хранятся 14 дней; для скачивания может требоваться вход в GitHub. Пакеты опубликованных GitHub Releases находятся отдельно. Полная инструкция — [INSTALL_RU.md](docs/INSTALL_RU.md).
+В выпуске для каждого из пяти файлов есть отдельный `.sha256`. Промежуточные [артефакты Actions](https://github.com/xeemoff/tanksession-analytics/actions/workflows/tests.yml) хранятся 14 дней; для их скачивания может требоваться вход в GitHub. Полная инструкция — [INSTALL_RU.md](docs/INSTALL_RU.md).
 
 1. **Закрой игру** и распакуй весь Windows-архив в обычную папку.
 2. Запусти **manager.cmd**, найди или выбери папку игры, проверь версию клиента и нажми «Установить / обновить». Установщик проверит пакет, сохранит предыдущие пакеты TankSession и заменит их; при ошибке замены выполнит откат.
@@ -170,7 +170,7 @@ npm run test:browser
 cd ..
 ```
 
-Тесты настоящего CPython 2.7 выполняются в отдельном CI-задании; проверки установщика PowerShell — на Windows. В другой среде соответствующие пропуски обозначены явно. Chromium проверяет браузерный интерфейс и не подменяет испытание встроенного Gameface. Результат CI относится к конкретному коммиту. База 1.0 RC2 прошла [CI 45877106421](https://github.com/xeemoff/tanksession-analytics/actions/runs/45877106421). Ссылки и результаты итоговой 2.0 фиксируются в [отчёте готовности](docs/READINESS_2_0_0_RU.md).
+Тесты настоящего CPython 2.7 выполняются в отдельном CI-задании; проверки установщика PowerShell — на Windows. В другой среде соответствующие пропуски обозначены явно. Chromium проверяет браузерный интерфейс и не подменяет испытание встроенного Gameface. Полный код 2.0 прошёл все восемь заданий [CI 45966051338](https://github.com/xeemoff/tanksession-analytics/actions/runs/45966051338), коммит `09b03f6`. Подробные результаты и границы проверки — в [отчёте готовности](docs/READINESS_2_0_0_RU.md).
 
 Локальная упаковка требует готового `ui/dist` и отдельного CPython 2.7:
 
@@ -182,17 +182,17 @@ python tools/package_release.py --tag v2.0.0-rc1
 
 `--verify` проверяет состав, CRC, метаданные и заголовки байткода без исполнения архива. Публикация по тегу повторяет автоматические проверки; стабильный канал дополнительно требует закрытого живого протокола и SHA-256 именно проверенного пакета.
 
-## Браузерные снимки 1.0.0-rc1
+## Интерфейс 2.0
 
-![История боёв и переход по всей истории в 1.0.0-rc1](docs/images/hangar-history-1.0.0-rc1.png)
+![Аналитика по картам и технике в 2.0.0-rc1](docs/images/hangar-v2-analytics.png)
 
-*Настоящий React-интерфейс **1.0.0-rc1** в Chromium, 1120 × 800. Это исторические снимки предыдущего кандидата; новые поля RC2 на них не подтверждены. Данные вымышленные, нативный Gameface проверяется отдельно.*
+*Настоящий React-интерфейс **2.0.0-rc1** в Chromium на вымышленных данных. Снимки из успешного [CI 45966051338](https://github.com/xeemoff/tanksession-analytics/actions/runs/45966051338), коммит `09b03f6`; PNG сохранены без преобразования. Нативный Gameface проверяется отдельно.*
 
-| Редактор целей | Настройки вида |
+| Карточки техники | Светлая тема |
 |---|---|
-| ![Личные цели в 1.0.0-rc1](docs/images/hangar-goals-1.0.0-rc1.png) | ![Сохранение настроек в 1.0.0-rc1](docs/images/hangar-settings-1.0.0-rc1.png) |
+| ![Карточки и иллюстрации классов техники](docs/images/hangar-v2-vehicles.png) | ![Светлая тема и настройка блоков](docs/images/hangar-v2-light-dashboard.png) |
 
-[Галерея](docs/SCREENSHOTS_RU.md) показывает новые показатели, сессии и прежние версии; у снимков указан источник.
+[Галерея](docs/SCREENSHOTS_RU.md) также показывает календарь, отчёт и наблюдения Coach; прежние версии сохранены в архивном разделе.
 
 ## Прежняя браузерная панель
 
