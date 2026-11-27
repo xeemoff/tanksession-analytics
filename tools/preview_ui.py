@@ -57,9 +57,9 @@ def create_ui_server(data_path, account_id, goals=None, demo=False,
     journal = CachedJournal(os.path.abspath(data_path))
     goals = validate_goals([] if goals is None else goals)
     temporary = tempfile.TemporaryDirectory(prefix='tanksession-demo-') if demo else None
-    workspace = Workspace(temporary.name if temporary else os.path.dirname(os.path.abspath(data_path)),
-                          memory=demo)
     writable = demo or allow_write
+    workspace = Workspace(temporary.name if temporary else os.path.dirname(os.path.abspath(data_path)),
+                          memory=demo, read_only=not writable)
 
     class Handler(BaseHTTPRequestHandler):
         def setup(self):

@@ -369,6 +369,50 @@ class WorkspaceTests(unittest.TestCase):
                                           preferences=dict(DEFAULT_PREFERENCES, density='compact')))
             self.assertEqual(retried['workspace']['operation']['code'], 'preferences_saved')
 
+    def test_readonly_workspace_projects_recovery_and_refuses_all_mutations(self):
+        path, previous, unused = self.seed_profile()
+        os.rename(path, path + '.rollback')
+        folder = os.path.dirname(path)
+        before = dict((name, self.read_bytes(os.path.join(folder, name))) for name in os.listdir(folder))
+        self.workspace = Workspace(self.folder, read_only=True)
+        requests = [command('initialize'), command(),
+                    command('save_preferences', preferences=DEFAULT_PREFERENCES),
+                    command('save_goal', goal={'vehicle': 'Tank', 'window': 10, 'target_avg_damage': 1500}),
+                    command('delete_goal', goal={'vehicle': 'Tank', 'window': 10}),
+                    command('export_csv')]
+        for request in requests:
+            result = self.snapshot(request)
+            self.assertEqual(result['status'], 'ready')
+            self.assertEqual(result['summary']['battles'], 1)
+            self.assertEqual(result['workspace']['preferences']['contrast'], 'high')
+            self.assertFalse(result['workspace']['can_edit'])
+            if request.get('action') in module.MUTATIONS:
+                self.assertEqual(result['workspace']['operation']['code'], 'read_only')
+            after = dict((name, self.read_bytes(os.path.join(folder, name))) for name in os.listdir(folder))
+            self.assertEqual(after, before)
+            self.assertFalse(os.path.exists(os.path.join(self.folder, 'exports')))
+        for name in ('battles.jsonl', 'battles.jsonl.pending.jsonl', 'goals.json'):
+            self.assertEqual(self.read_bytes(os.path.join(self.folder, name)), self.original)
+        self.workspace = Workspace(self.folder)
+        self.assertTrue(self.snapshot(command('initialize'))['workspace']['can_edit'])
+        self.assertEqual(self.read_bytes(path), previous)
+        self.assertFalse(os.path.exists(path + '.rollback'))
+
+    def test_readonly_recovery_still_rejects_invalid_and_oversized_profiles(self):
+        path = self.workspace._path('A')
+        os.makedirs(os.path.dirname(path))
+        self.workspace = Workspace(self.folder, read_only=True)
+        for raw in (b'{broken', b'{}', b'x' * (module.MAX_PROFILE_BYTES + 1)):
+            with open(path + '.rollback', 'wb') as stream:
+                stream.write(raw)
+            result = self.snapshot(command('initialize'))
+            self.assertEqual(result['status'], 'ready')
+            self.assertEqual(result['summary']['battles'], 1)
+            self.assertFalse(result['workspace']['can_edit'])
+            self.assertEqual(result['workspace']['operation']['code'], 'read_failed')
+            self.assertFalse(os.path.exists(path))
+            self.assertEqual(self.read_bytes(path + '.rollback'), raw)
+
     def test_stripped_runtime_failed_backup_rollback_preserves_old_backup_for_retry(self):
         path, previous, backup = self.seed_profile()
         with StrippedWindowsRuntime() as runtime:

@@ -184,9 +184,9 @@ python tools/package_release.py --tag v2.0.0-rc2
 
 ## Интерфейс 2.0
 
-![Аналитика по картам и технике в 2.0.0-rc1](docs/images/hangar-v2-analytics.png)
+![Аналитика по картам и технике в 2.0.0-rc2](docs/images/hangar-v2-analytics.png)
 
-*Настоящий React-интерфейс **2.0.0-rc1** в Chromium на вымышленных данных. Снимки из успешного [CI 45966051338](https://github.com/xeemoff/tanksession-analytics/actions/runs/45966051338), коммит `09b03f6`; PNG сохранены без преобразования. Нативный Gameface проверяется отдельно.*
+*Настоящий React-интерфейс **2.0.0-rc2** в Chromium на вымышленных данных. Снимки из успешного [CI 46038083441](https://github.com/xeemoff/tanksession-analytics/actions/runs/46038083441), коммит `8865811`; PNG сохранены без преобразования. Нативный Gameface проверяется отдельно.*
 
 | Карточки техники | Светлая тема |
 |---|---|

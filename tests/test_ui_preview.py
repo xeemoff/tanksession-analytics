@@ -105,6 +105,55 @@ class UiPreviewTests(unittest.TestCase):
         self.assertEqual(self.post(request)[0], 403)
         self.assertFalse((Path(self.folder.name) / 'exports').exists())
 
+    def test_readonly_preview_projects_rollback_without_writes_and_opt_in_recovers(self):
+        base = Path(self.folder.name)
+        workspace = preview_module.Workspace(str(base))
+        path = Path(workspace._path('101'))
+        path.parent.mkdir()
+        profile = {'version': 2, 'preferences': {'vehicle': '', 'window': 30, 'tab': 'settings',
+                   'density': 'compact', 'contrast': 'high'}, 'goals': []}
+        raw = (json.dumps(profile) + '\n').encode('utf-8')
+        rollback = path.with_name(path.name + '.rollback')
+        rollback.write_bytes(raw)
+        path.with_name(path.name + '.bak.rollback').write_bytes(raw)
+        (path.parent / '.tsa-interrupted.tmp').write_bytes(b'uncommitted temporary bytes')
+
+        def directory_contents():
+            return {str(entry.relative_to(base)): None if entry.is_dir() else entry.read_bytes()
+                    for entry in base.rglob('*')}
+
+        before = directory_contents()
+        initialize = dict(protocol=1, request_id='readonly-init', vehicle='', window=10,
+                          action='initialize')
+        status, body = self.post(initialize)
+        self.assertEqual(status, 200)
+        initialized = json.loads(body)
+        self.assertEqual(initialized['status'], 'ready')
+        self.assertEqual(initialized['summary']['battles'], 2)
+        self.assertEqual(initialized['workspace']['preferences']['contrast'], 'high')
+        self.assertFalse(initialized['workspace']['can_edit'])
+        self.assertEqual(directory_contents(), before)
+
+        status, _, body = self.get('/api/snapshot?request_id=readonly-get')
+        self.assertEqual(status, 200)
+        refreshed = json.loads(body)
+        self.assertEqual(refreshed['status'], 'ready')
+        self.assertEqual(refreshed['summary']['battles'], 2)
+        self.assertEqual(refreshed['workspace']['preferences']['contrast'], 'high')
+        self.assertFalse(refreshed['workspace']['can_edit'])
+        self.assertEqual(directory_contents(), before)
+
+        self.enable_writes()
+        status, _, body = self.get('/api/snapshot?request_id=writable-get')
+        self.assertEqual(status, 200)
+        recovered = json.loads(body)
+        self.assertTrue(recovered['workspace']['can_edit'])
+        self.assertEqual(recovered['workspace']['preferences']['contrast'], 'high')
+        self.assertEqual(recovered['summary']['battles'], 2)
+        expected = dict(before)
+        expected[str(path.relative_to(base))] = expected.pop(str(rollback.relative_to(base)))
+        self.assertEqual(directory_contents(), expected)
+
     def test_cross_origin_or_form_commands_are_rejected(self):
         request = dict(protocol=1, request_id='init', vehicle='', window=10, action='initialize')
         for headers in ({'Content-Type': 'text/plain'},

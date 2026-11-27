@@ -161,28 +161,33 @@ def _read_profile_bytes(path):
     return data
 
 
-def _recover_replacement(path, cleanup=False):
-    """A present validated destination wins; an absent one restores rollback.
+def _recover_replacement(path, cleanup=False, read_only=False):
+    """Select the profile path; restore rollback only when writes are allowed.
 
     Only a fully written temporary file is installed at the destination. If
     both names exist, the second rename committed. Never remove the rollback
     while the destination is missing, invalid, linked or unreadable. This
     handles interrupted operations, not simultaneous writers or disk loss.
+    Read-only callers can project a valid rollback without renaming either
+    file or cleaning up recovery copies.
     """
     rollback = path + '.rollback'
     if os.path.islink(path) or os.path.islink(rollback):
         raise IOError('Linked profile replacement is not supported')
     if not os.path.lexists(rollback):
-        return
+        return path
     if not os.path.isfile(rollback):
         raise IOError('Profile rollback is not a regular file')
     if os.path.lexists(path):
         _read_profile_bytes(path)
-        if cleanup:
+        if cleanup and not read_only:
             os.remove(rollback)
     else:
         _read_profile_bytes(rollback)
+        if read_only:
+            return rollback
         os.rename(rollback, path)
+    return path
 
 
 def _replace_recoverable(source, destination):
@@ -257,9 +262,10 @@ def _csv_cell(value):
 
 
 class Workspace(object):
-    def __init__(self, folder, memory=False, log=None):
+    def __init__(self, folder, memory=False, log=None, read_only=False):
         self.folder = os.path.abspath(folder)
         self.memory = memory
+        self.read_only = read_only
         self._profiles = {}
         self._completed = {}
         self._log = log
@@ -314,13 +320,15 @@ class Workspace(object):
         path = self._path(account)
         if os.path.islink(os.path.dirname(path)) or os.path.islink(path):
             raise IOError('Linked UI profile is not supported')
-        _recover_replacement(path)
+        path = _recover_replacement(path, read_only=self.read_only)
         if not os.path.exists(path):
             return {'version': 2, 'preferences': dict(DEFAULT_PREFERENCES), 'goals': None}
         data = _read_profile_bytes(path)
         return self._validate_profile(json.loads(data.decode('utf-8-sig')))
 
     def _save(self, account, profile):
+        if self.read_only:
+            raise IOError('Workspace is read-only')
         clean = self._validate_profile(profile)
         if self.memory:
             self._profiles[self._key(account)] = clean
@@ -348,6 +356,8 @@ class Workspace(object):
                 if 'account_id' not in goal or _verified_account(goal['account_id']) == account]
 
     def _export(self, records, account, vehicle, observed):
+        if self.read_only:
+            raise IOError('Workspace is read-only')
         from .analytics import sort_records
         from .presentation import clean_own_records
         clean, unused = clean_own_records(records, account)
@@ -392,7 +402,7 @@ class Workspace(object):
         if account is None:
             return build_snapshot([], None, request, source=source, now=observed)
         operation = None
-        writable = True
+        writable = not self.read_only
         try:
             profile = self._load(account)
         except (ValueError, IOError, OSError, UnicodeError, TypeError, ImportError) as error:
@@ -436,6 +446,8 @@ class Workspace(object):
             if not any((goal['vehicle'], goal['window']) == original_key for goal in goals):
                 request['goal']['vehicle'] = resolve(request['goal']['vehicle'])
         action = request.get('action')
+        if action in MUTATIONS and self.read_only and operation is None:
+            operation = {'status': 'error', 'code': 'read_only'}
         if action == 'initialize' or (action is None and request['request_id'] == 'initial'):
             request['vehicle'] = profile['preferences']['vehicle']
             request['window'] = profile['preferences']['window']
